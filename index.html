@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Escape the Island</title>
+  <meta name="description" content="A cooperative classroom game: answer questions together, collect supplies, and build a life raft to escape the island.">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8F%9D%EF%B8%8F%3C/text%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Nunito:wght@500;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="sea" aria-hidden="true"></div>
+  <noscript><p class="noscript">Escape the Island needs JavaScript. Please turn it on and reload.</p></noscript>
+
+  <main id="app">
+
+    <!-- ============ HOME ============ -->
+    <section id="screen-home" class="screen">
+      <div class="home-hero">
+        <h1 class="title">Escape the <span class="title-island">Island</span></h1>
+        <p class="tagline">You're shipwrecked! Answer questions together, collect supplies, and build a life raft before the questions run out.</p>
+      </div>
+
+      <div class="card home-card">
+        <label class="field">
+          <span class="field-label">Your name</span>
+          <input id="nameInput" type="text" maxlength="14" autocomplete="off" placeholder="Captain Sam">
+        </label>
+
+        <div class="home-split">
+          <div class="home-option">
+            <h2>Start a new game</h2>
+            <p>You'll get a room code to share with your team.</p>
+            <button id="hostBtn" class="btn palm" type="button">Host a game</button>
+          </div>
+          <div class="home-option">
+            <h2>Join a game</h2>
+            <label class="field">
+              <span class="field-label">Room code</span>
+              <input id="codeInput" class="code-input" type="text" maxlength="4" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="ABCD">
+            </label>
+            <button id="joinBtn" class="btn" type="button">Join game</button>
+          </div>
+        </div>
+        <p id="homeMsg" class="home-msg" role="alert"></p>
+      </div>
+
+      <div class="card how-card">
+        <h2>How to play</h2>
+        <ol class="how-list">
+          <li>Take turns rolling the die and moving around the island.</li>
+          <li>Every space you land on asks a question, and <strong>everyone</strong> answers it.</li>
+          <li>Item spaces add supplies to the shared life raft.</li>
+          <li>Fill all 10 raft slots before the questions run out to escape!</li>
+        </ol>
+      </div>
+    </section>
+
+    <!-- ============ LOBBY ============ -->
+    <section id="screen-lobby" class="screen hidden">
+      <div class="card lobby-card">
+        <h2>Gather your crew</h2>
+        <p class="lobby-sub">Share this room code with your team:</p>
+        <div class="room-code" id="roomCode" aria-label="Room code">----</div>
+        <div class="lobby-share">
+          <button id="copyCodeBtn" class="btn small ghost" type="button">Copy code</button>
+          <button id="copyLinkBtn" class="btn small ghost" type="button">Copy join link</button>
+        </div>
+
+        <h3 class="lobby-heading">Crew</h3>
+        <p id="lobbyFacilitator" class="lobby-facilitator hidden"></p>
+        <ul id="lobbyPlayers" class="lobby-players"></ul>
+
+        <div id="lobbyHostControls" class="hidden">
+          <label class="check"><input type="checkbox" id="optHostPlays" checked> <span>I'm playing too (uncheck if you're only running the game)</span></label>
+          <label class="check"><input type="checkbox" id="optAutoContinue" checked> <span>Move on automatically a few seconds after each question</span></label>
+          <p id="lobbyQCount" class="lobby-qcount"></p>
+          <button id="startBtn" class="btn big palm" type="button">Start the adventure</button>
+        </div>
+        <p id="lobbyWaiting" class="lobby-waiting hidden">Waiting for the host to start the game…</p>
+        <button id="lobbyLeaveBtn" class="btn small ghost lobby-leave" type="button">Leave</button>
+      </div>
+    </section>
+
+    <!-- ============ GAME ============ -->
+    <section id="screen-game" class="screen hidden">
+      <header class="topbar">
+        <div class="logo">Escape the Island</div>
+        <div class="room-chip">Room <b id="roomChip">----</b></div>
+        <button id="leaveBtn" class="btn small ghost" type="button">Leave</button>
+      </header>
+
+      <div class="game">
+        <div class="board-col">
+          <div class="board" id="board">
+            <svg class="ring" viewBox="0 0 100 100" aria-hidden="true">
+              <circle cx="50" cy="50" r="38" fill="none" stroke="#c99a4b" stroke-opacity=".35" stroke-width="7"/>
+              <circle cx="50" cy="50" r="38" fill="none" stroke="#fff7dc" stroke-width="1.1" stroke-dasharray="1.4 2.6" stroke-linecap="round"/>
+            </svg>
+            <div id="spaces"></div>
+
+            <div class="raft-wrap">
+              <div class="raft-title">Life Raft</div>
+              <div class="raft" id="raft" style="--p:0">
+                <div class="mast"><div class="sail"></div></div>
+                <div class="deck" id="raftSlots"></div>
+                <div class="logs"></div>
+              </div>
+              <div class="raft-count"><span id="raftCount">0</span>/10 supplies</div>
+            </div>
+
+            <div id="tokens"></div>
+          </div>
+        </div>
+
+        <aside class="panel">
+          <div class="card turn-card">
+            <div id="turnText" class="turn-text" aria-live="polite">Get ready…</div>
+            <div class="die-row">
+              <div id="die" class="die" role="img" aria-label="Die"></div>
+              <button id="rollBtn" class="btn big" type="button" disabled>Roll the die</button>
+            </div>
+          </div>
+
+          <div class="card">
+            <h3 class="card-h">Supplies found</h3>
+            <ul id="supplyCounts" class="supply-counts"></ul>
+          </div>
+
+          <div class="card" id="deckCard">
+            <h3 class="card-h">Questions left</h3>
+            <div class="deck-line"><span id="deckLeft" class="deck-num">0</span><span id="deckTotal" class="deck-total"></span></div>
+            <div class="bar"><div id="deckBar" class="bar-fill"></div></div>
+            <p class="deck-note">Fill the raft before they run out!</p>
+          </div>
+
+          <div class="card">
+            <h3 class="card-h">Crew</h3>
+            <ul id="playerList" class="player-list"></ul>
+          </div>
+
+          <div class="card hidden" id="hostControls">
+            <h3 class="card-h">Host controls</h3>
+            <label class="check"><input type="checkbox" id="hcAutoContinue"> <span>Move on automatically after each question</span></label>
+            <button id="restartBtn" class="btn small ghost" type="button">Restart game</button>
+          </div>
+
+          <div class="card">
+            <h3 class="card-h">Island log</h3>
+            <ul id="logList" class="log-list"></ul>
+          </div>
+        </aside>
+      </div>
+    </section>
+  </main>
+
+  <!-- ============ QUESTION MODAL ============ -->
+  <div id="qModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="qText">
+    <div class="card qcard">
+      <div id="qLanded" class="q-landed"></div>
+      <div id="qMeta" class="q-meta"></div>
+      <h2 id="qText" class="q-text"></h2>
+
+      <div id="qAnswerArea" class="q-answer">
+        <input id="qInput" type="text" maxlength="80" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Type your answer here" aria-label="Your answer">
+        <button id="qSubmit" class="btn palm" type="button">Lock in answer</button>
+      </div>
+      <p id="qWait" class="q-wait hidden"></p>
+      <p id="qHostAnswer" class="q-hostanswer hidden"></p>
+      <ul id="qProgress" class="q-progress"></ul>
+
+      <div id="qReveal" class="q-reveal hidden">
+        <div id="qVerdict" class="q-verdict"></div>
+        <div class="q-correct">Correct answer: <strong id="qCorrect"></strong></div>
+        <ul id="qResults" class="q-results"></ul>
+        <div id="qCountdown" class="countdown"><div class="countdown-fill"></div></div>
+        <p id="qNextNote" class="q-nextnote"></p>
+      </div>
+
+      <div class="q-actions">
+        <button id="qSkip" class="btn small ghost hidden" type="button">Skip waiting</button>
+        <button id="qContinue" class="btn palm hidden" type="button">Next turn</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ END MODAL ============ -->
+  <div id="endModal" class="modal end-modal hidden" role="dialog" aria-modal="true" aria-labelledby="endTitle">
+    <div class="card end-card">
+      <div id="endIcon" class="end-icon" aria-hidden="true"></div>
+      <h2 id="endTitle" class="end-title"></h2>
+      <p id="endMsg" class="end-msg"></p>
+      <p id="endStats" class="end-stats"></p>
+      <div class="end-actions">
+        <button id="playAgainBtn" class="btn palm hidden" type="button">Play again</button>
+        <p id="endWaiting" class="q-wait hidden">Waiting for the host to start another round…</p>
+        <button id="endLeaveBtn" class="btn ghost" type="button">Leave game</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ HOST-LOST MODAL ============ -->
+  <div id="lostHostModal" class="modal hidden" role="alertdialog" aria-modal="true" aria-labelledby="lostHostTitle">
+    <div class="card end-card">
+      <div class="end-icon" aria-hidden="true">🌊</div>
+      <h2 id="lostHostTitle" class="end-title">Lost contact with the host</h2>
+      <p class="end-msg">The game ended because the host left or lost their connection. Ask the host to start a new room.</p>
+      <button id="lostHostBtn" class="btn" type="button">Back to start</button>
+    </div>
+  </div>
+
+  <!-- ============ PIN MODAL (teacher) ============ -->
+  <div id="pinModal" class="modal modal-top hidden" role="dialog" aria-modal="true" aria-labelledby="pinTitle">
+    <div class="card pin-card">
+      <h2 id="pinTitle">Teacher mode</h2>
+      <label class="field">
+        <span class="field-label">Enter PIN</span>
+        <input id="pinInput" type="password" inputmode="numeric" autocomplete="off" maxlength="12">
+      </label>
+      <p id="pinMsg" class="home-msg" role="alert"></p>
+      <div class="pin-actions">
+        <button id="pinCancel" class="btn ghost small" type="button">Cancel</button>
+        <button id="pinOk" class="btn small" type="button">Unlock</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ TEACHER PANEL ============ -->
+  <div id="teacherModal" class="modal modal-mid hidden" role="dialog" aria-modal="true" aria-labelledby="tTitle">
+    <div class="card teacher-card">
+      <div class="teacher-head">
+        <h2 id="tTitle">Teacher mode: questions</h2>
+        <button id="tClose" class="btn small ghost" type="button">Close</button>
+      </div>
+      <p class="teacher-note">Questions are saved on this device and used when this device hosts a game. Changes apply the next time a game starts.</p>
+      <p id="tCount" class="teacher-count"></p>
+      <p class="teacher-note">Answers ignore capital letters and punctuation. Separate alternate answers with <strong>|</strong> (example: <em>6 | six</em>). Small typos are forgiven on longer words.</p>
+
+      <form id="tAddForm" class="t-add" autocomplete="off">
+        <input id="tNewQ" type="text" maxlength="200" placeholder="Question" aria-label="New question" required>
+        <input id="tNewA" type="text" maxlength="120" placeholder="Correct answer" aria-label="Correct answer" required>
+        <button class="btn small palm" type="submit">Add question</button>
+      </form>
+
+      <details class="t-bulk">
+        <summary>Add many at once</summary>
+        <p class="teacher-note">One per line. Put the question and answer on the same line, separated by a tab (paste two spreadsheet columns) or by <strong>=&gt;</strong>.</p>
+        <textarea id="tBulk" rows="5" placeholder="What is 7 x 8? => 56"></textarea>
+        <button id="tBulkBtn" class="btn small" type="button">Add these questions</button>
+      </details>
+
+      <ul id="tList" class="t-list"></ul>
+
+      <div class="t-tools">
+        <button id="tExport" class="btn small ghost" type="button">Export file</button>
+        <label class="btn small ghost t-import">Import file<input id="tImport" type="file" accept="application/json,.json" hidden></label>
+        <button id="tSamples" class="btn small ghost" type="button">Load sample questions</button>
+        <button id="tClear" class="btn small ghost danger" type="button">Delete all</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <div id="confetti" class="confetti" aria-hidden="true"></div>
+  <div id="hotCorner" aria-hidden="true"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
+  <script src="script.js"></script>
+</body>
+</html>
