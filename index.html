@@ -147,6 +147,7 @@
             <h3 class="card-h">Host controls</h3>
             <label class="check"><input type="checkbox" id="hcAutoContinue"> <span>Move on automatically after each question</span></label>
             <button id="hcWhiteboard" class="btn small palm" type="button">✏️ Open whiteboard</button>
+            <button id="hcReport" class="btn small ghost" type="button">📊 Class report</button>
             <button id="restartBtn" class="btn small ghost" type="button">Restart game</button>
           </div>
 
@@ -200,6 +201,7 @@
       <p id="endStats" class="end-stats"></p>
       <div class="end-actions">
         <button id="playAgainBtn" class="btn palm hidden" type="button">Play again</button>
+        <button id="endReportBtn" class="btn ghost hidden" type="button">📊 View class report</button>
         <p id="endWaiting" class="q-wait hidden">Waiting for the host to start another round…</p>
         <button id="endLeaveBtn" class="btn ghost" type="button">Leave game</button>
       </div>
@@ -265,8 +267,33 @@
         <button id="tExport" class="btn small ghost" type="button">Export file</button>
         <label class="btn small ghost t-import">Import file<input id="tImport" type="file" accept="application/json,.json" hidden></label>
         <button id="tSamples" class="btn small ghost" type="button">Load sample questions</button>
+        <button id="tReport" class="btn small ghost" type="button">📊 Last game report</button>
         <button id="tClear" class="btn small ghost danger" type="button">Delete all</button>
       </div>
+    </div>
+  </div>
+
+  <!-- ============ CLASS REPORT ============ -->
+  <div id="reportModal" class="modal modal-mid hidden" role="dialog" aria-modal="true" aria-labelledby="rTitle">
+    <div class="card report-card">
+      <div class="wb-head">
+        <h2 id="rTitle">Class report</h2>
+        <button id="rClose" class="btn small ghost" type="button">Close</button>
+      </div>
+      <p id="rMeta" class="teacher-note"></p>
+      <div id="rBody">
+        <h3 class="card-h">Student totals</h3>
+        <div class="table-wrap"><table id="rStudents" class="rtable"></table></div>
+        <h3 class="card-h">Question results</h3>
+        <div class="table-wrap"><table id="rQuestions" class="rtable"></table></div>
+      </div>
+      <p id="rEmpty" class="t-empty hidden">No report yet. Host a game and the results will appear here after the first question.</p>
+      <div class="wb-actions">
+        <button id="rDownload" class="btn palm" type="button">Download answers (CSV)</button>
+        <button id="rSummary" class="btn" type="button">Download summary (CSV)</button>
+        <button id="rDelete" class="btn small ghost danger" type="button">Delete report</button>
+      </div>
+      <p class="teacher-note">CSV files open in Excel or Google Sheets. Names are what students typed when they joined. The report is saved on this device only, and each new game replaces it.</p>
     </div>
   </div>
 

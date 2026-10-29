@@ -23,6 +23,7 @@
   const STORE_Q = 'escapeIsland.questions.v2';
   const STORE_Q_OLD = 'escapeIsland.questions.v1';
   const STORE_NAME = 'escapeIsland.name';
+  const STORE_REPORT = 'escapeIsland.report.v1';
   const SESS_TOKEN = 'escapeIsland.token';
   const SESS_ROOM = 'escapeIsland.room';
 
@@ -367,6 +368,7 @@
     H.reveal = null;
     H.paused = false;
     H.log = [];
+    startReport();
     hostClearBoard();
     H.phase = 'roll';
     hostLog('The crew washes ashore. Find supplies and build a raft!');
@@ -456,6 +458,7 @@
     const who = Object.keys(H.answers);
     const right = who.filter(pid => H.answers[pid] === H.current.correctIdx).length;
     H.reveal = { correctIdx: H.current.correctIdx, right, total: who.length };
+    recordQuestion();
     H.phase = 'reveal';
     hostLog(who.length ? `${right} of ${who.length} answered correctly.` : 'Nobody answered.');
     broadcast();
@@ -1339,6 +1342,7 @@
     $('#endStats').textContent = S.raft.length + ' of ' + S.target + ' supplies collected · ' + (S.totalQ - S.deckLeft) + ' of ' + S.totalQ + ' questions used';
     const isHost = net.role === 'host';
     $('#playAgainBtn').classList.toggle('hidden', !isHost);
+    $('#endReportBtn').classList.toggle('hidden', !isHost);
     $('#endWaiting').classList.toggle('hidden', isHost);
     if (won && (!prev || prev.phase !== 'won')) launchConfetti();
   }
@@ -1658,6 +1662,138 @@
   }
 
   /* ---------------------------------------------------------
+     CLASS REPORT
+     One report per game. Recorded on the host's device only and saved in
+     localStorage, so a refresh does not lose it. Never sent to students.
+     --------------------------------------------------------- */
+  let report = null;   // { id, started, room, entries: [{ n, t, q, a, rows: [{ name, ans, ok }] }] }
+
+  function loadReport() {
+    try {
+      const r = JSON.parse(local.get(STORE_REPORT, 'null'));
+      if (r && Array.isArray(r.entries)) return r;
+    } catch (e) { /* ignore */ }
+    return null;
+  }
+  function saveReport() { if (report) local.set(STORE_REPORT, JSON.stringify(report)); }
+  function startReport() { report = { id: uid(6), started: Date.now(), room: net.code, entries: [] }; saveReport(); }
+
+  function recordQuestion() {
+    if (!H.current) return;
+    if (!report) startReport();
+    const has = (p) => Object.prototype.hasOwnProperty.call(H.answers, p.pid);
+    const rows = H.players.filter(p => p.connected || has(p)).map(p => ({
+      name: p.name,
+      ans: has(p) ? H.current.choices[H.answers[p.pid]] : null,       // null = no answer
+      ok: has(p) ? H.answers[p.pid] === H.current.correctIdx : null
+    }));
+    report.entries.push({ n: H.asked, t: Date.now(), q: H.current.q, a: H.current.choices[H.current.correctIdx], rows });
+    saveReport();
+  }
+
+  function reportStats(r) {
+    const byName = {}, students = [];
+    r.entries.forEach(e => e.rows.forEach(row => {
+      let st = byName[row.name];
+      if (!st) { st = { name: row.name, answered: 0, correct: 0 }; byName[row.name] = st; students.push(st); }
+      if (row.ans !== null) { st.answered++; if (row.ok) st.correct++; }
+    }));
+    students.forEach(st => { st.pct = st.answered ? Math.round(st.correct / st.answered * 100) : null; });
+
+    const qs = r.entries.map(e => {
+      const given = e.rows.filter(x => x.ans !== null);
+      const correct = given.filter(x => x.ok).length;
+      const wrong = {};
+      given.filter(x => !x.ok).forEach(x => { wrong[x.ans] = (wrong[x.ans] || 0) + 1; });
+      const common = Object.keys(wrong).sort((a, b) => wrong[b] - wrong[a]).slice(0, 2).map(k => k + ' (' + wrong[k] + ')').join('; ');
+      return { n: e.n, q: e.q, a: e.a, answered: given.length, correct, pct: given.length ? Math.round(correct / given.length * 100) : null, common };
+    });
+    return { students, qs };
+  }
+  const pctText = (v) => (v === null ? '–' : v + '%');
+
+  function fillTable(table, head, rows, pctCol) {
+    table.replaceChildren();
+    const thead = el('thead'), hr = el('tr');
+    head.forEach(h => hr.append(el('th', '', h)));
+    thead.append(hr);
+    const tbody = el('tbody');
+    rows.forEach(r => {
+      const tr = el('tr');
+      r.forEach((v, i) => {
+        const td = el('td', '', String(v));
+        if (i === pctCol) { const n = parseInt(v, 10); if (!isNaN(n) && n < 60) td.className = 'low'; }
+        tr.append(td);
+      });
+      tbody.append(tr);
+    });
+    table.append(thead, tbody);
+  }
+
+  function renderReport() {
+    const has = !!(report && report.entries.length);
+    $('#rBody').classList.toggle('hidden', !has);
+    $('#rEmpty').classList.toggle('hidden', has);
+    ['#rDownload', '#rSummary', '#rDelete'].forEach(sel => { $(sel).disabled = !has; });
+    $('#rMeta').textContent = has
+      ? new Date(report.started).toLocaleString() + ' · Room ' + report.room + ' · ' + report.entries.length + ' question' + (report.entries.length === 1 ? '' : 's') + ' asked'
+      : '';
+    if (!has) return;
+    const { students, qs } = reportStats(report);
+    fillTable($('#rStudents'), ['Student', 'Answered', 'Correct', 'Percent'],
+      students.map(st => [st.name, st.answered, st.correct, pctText(st.pct)]), 3);
+    fillTable($('#rQuestions'), ['#', 'Question', 'Correct answer', 'Answered', 'Correct', 'Percent', 'Most common wrong answers'],
+      qs.map(q => [q.n, q.q, q.a, q.answered, q.correct, pctText(q.pct), q.common || '–']), 5);
+  }
+
+  function openReport() {
+    if (!report) report = loadReport();
+    renderReport();
+    $('#reportModal').classList.remove('hidden');
+  }
+  function closeReport() { $('#reportModal').classList.add('hidden'); }
+
+  // CSV helpers. Student names are typed by students, so guard against spreadsheet formulas.
+  function csvCell(v) {
+    let s = v == null ? '' : String(v);
+    if (/^[=+@\t\r]/.test(s) || /^-(?![\d.])/.test(s)) s = "'" + s;
+    return /[",\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  }
+  function downloadCsv(name, rows) {
+    const text = '\ufeff' + rows.map(r => r.map(csvCell).join(',')).join('\r\n');   // BOM so Excel reads accents correctly
+    const url = URL.createObjectURL(new Blob([text], { type: 'text/csv;charset=utf-8' }));
+    const a = el('a'); a.href = url; a.download = name;
+    document.body.append(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+  function dateStamp() {
+    const d = new Date(report.started), z = (n) => String(n).padStart(2, '0');
+    return d.getFullYear() + '-' + z(d.getMonth() + 1) + '-' + z(d.getDate());
+  }
+
+  function downloadAnswers() {
+    const rows = [['Date and time', 'Question #', 'Student', 'Question', "Student's answer", 'Correct answer', 'Result']];
+    report.entries.forEach(e => e.rows.forEach(r => {
+      rows.push([new Date(e.t).toLocaleString(), e.n, r.name, e.q, r.ans === null ? '' : r.ans, e.a, r.ans === null ? 'No answer' : (r.ok ? 'Correct' : 'Incorrect')]);
+    }));
+    downloadCsv('escape-the-island-answers-' + dateStamp() + '.csv', rows);
+  }
+
+  function downloadSummary() {
+    const { students, qs } = reportStats(report);
+    const rows = [
+      ['Escape the Island class summary', new Date(report.started).toLocaleString(), 'Room ' + report.room],
+      [],
+      ['Student totals'],
+      ['Student', 'Questions answered', 'Correct', 'Percent correct']
+    ];
+    students.forEach(st => rows.push([st.name, st.answered, st.correct, pctText(st.pct)]));
+    rows.push([], ['Question results'], ['Question #', 'Question', 'Correct answer', 'Students answered', 'Correct', 'Percent correct', 'Most common wrong answers']);
+    qs.forEach(q => rows.push([q.n, q.q, q.a, q.answered, q.correct, pctText(q.pct), q.common]));
+    downloadCsv('escape-the-island-summary-' + dateStamp() + '.csv', rows);
+  }
+
+  /* ---------------------------------------------------------
      WIRING
      --------------------------------------------------------- */
   function copyText(text, okMsg) {
@@ -1707,7 +1843,7 @@
     $('#leaveBtn').addEventListener('click', leaveGame);
     $('#hcAutoContinue').addEventListener('change', e => { if (net.role === 'host') { H.autoContinue = e.target.checked; broadcast(); } });
     $('#restartBtn').addEventListener('click', () => {
-      if (net.role === 'host' && window.confirm('Restart the game with fresh questions? Everyone goes back to the start.')) hostStart();
+      if (net.role === 'host' && window.confirm('Restart the game with fresh questions? Everyone goes back to the start. This also starts a new class report, so download the current one first if you need it.')) hostStart();
     });
 
     // Question modal
@@ -1728,6 +1864,19 @@
     $('#boardClose').addEventListener('click', closeBoardView);
     $('#showBoardBtn').addEventListener('click', () => { if (boardData) openBoardView(); });
     initWhiteboard();
+
+    // Class report
+    report = loadReport();
+    $('#hcReport').addEventListener('click', openReport);
+    $('#endReportBtn').addEventListener('click', openReport);
+    $('#tReport').addEventListener('click', openReport);
+    $('#rClose').addEventListener('click', closeReport);
+    $('#rDownload').addEventListener('click', () => { if (report && report.entries.length) downloadAnswers(); });
+    $('#rSummary').addEventListener('click', () => { if (report && report.entries.length) downloadSummary(); });
+    $('#rDelete').addEventListener('click', () => {
+      if (!window.confirm('Delete this report from this device? This cannot be undone.')) return;
+      report = null; local.set(STORE_REPORT, 'null'); renderReport();
+    });
     $('#qSkip').addEventListener('click', () => { if (net.role === 'host') resolveQuestion(); });
     $('#qContinue').addEventListener('click', () => { if (net.role === 'host') hostContinue(); });
 
@@ -1741,6 +1890,7 @@
       if (e.shiftKey && e.code === 'KeyT' && (e.ctrlKey || e.altKey)) { e.preventDefault(); openPin(); }
       if (e.key === 'Escape') {
         if (!$('#pinModal').classList.contains('hidden')) closePin();
+        else if (!$('#reportModal').classList.contains('hidden')) closeReport();
         else if (!$('#teacherModal').classList.contains('hidden')) closeTeacher();
         else if (!$('#wbModal').classList.contains('hidden')) closeWb();
         else if (!$('#boardModal').classList.contains('hidden')) closeBoardView();

@@ -43,6 +43,15 @@ Teacher Mode lets you add, edit, and delete the trivia questions and their answe
 
 While a question is on screen, the host can press **Whiteboard** to doodle an explanation (pen colors, sizes, eraser, undo). Press **Show to class** and the drawing appears on every student's screen. Students can close it and reopen it from a button in the corner. The game pauses its auto-advance while you use the whiteboard, and you press **Next turn** when you are ready. The drawing clears when the next turn starts.
 
+### Class report
+
+Every game records each student's answers on the host's device. Open it from **Class report** in Host controls, from **View class report** on the win/lose screen, or from **Last game report** in Teacher Mode. You get on-screen tables (student totals, and for each question the percent correct and the most common wrong answers), plus two downloads that open in Excel or Google Sheets:
+
+- **Answers (CSV):** one row per student per question, with what they picked, the correct answer, and the result.
+- **Summary (CSV):** student totals and question results in one file.
+
+The report is saved only in the host's browser (never sent to students), and each new game replaces it, so download it first if you need to keep it. Students are identified by the name they typed when joining, so ask them to use a first name plus last initial. Use **Delete report** to remove it from a shared computer.
+
 ### Changing the PIN
 
 Open `script.js` and edit the `TEACHER_PIN` line near the top. The PIN lives only in this file, never in the HTML. Anyone who opens the page source can read it, so it keeps students out of the menu but is not real security. Change it before publishing to a public repository.
