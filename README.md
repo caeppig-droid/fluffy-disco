@@ -10,9 +10,11 @@ It runs entirely in the browser with no backend or database. Players connect dir
 2. Everyone else enters their name and the room code, then clicks **Join game**.
 3. The host clicks **Start the adventure**.
 4. On your turn, roll the die and move around the island.
-5. Every landing asks a question, and **every player** answers it. The next turn unlocks once everyone has answered.
+5. Every landing asks a multiple-choice question, and **every player** picks an answer (A, B, C or D) and locks it in. The next turn unlocks once everyone has answered.
 6. Item spaces (wood, rope, mango, medkit) add to the shared raft.
 7. **Win:** fill all 10 raft slots. **Lose:** the questions run out first.
+
+Students only see their own result. They never see what their classmates picked. The host sees who picked what, so you can talk it through with the class.
 
 The host's browser keeps the game state, so if the host closes their tab the game ends. A player who refreshes or loses connection rejoins automatically as the same person.
 
@@ -33,9 +35,13 @@ Teacher Mode lets you add, edit, and delete the trivia questions and their answe
 - **Open it:** press `Alt+Shift+T`, or triple-click the invisible bottom-left corner of the page. (`Ctrl+Shift+T` is also wired up, but many browsers reserve it for reopening closed tabs.)
 - **Unlock it** with the PIN set in `script.js` (see below).
 - **Where questions live:** they are saved in that device's browser (`localStorage`), and the game uses the questions on the device that hosts. Use **Export file** and **Import file** to move them between devices.
-- **Answers:** matching ignores capitals and punctuation. Put alternate answers after a `|`, for example `6 | six`. Small typos are forgiven on longer words, and numbers must match exactly.
-- **Bulk add:** paste one question per line, with the question and answer separated by a tab (two spreadsheet columns) or by `=>`.
+- **Multiple choice:** each question has one correct answer and 1 to 3 wrong answers (2 to 4 choices). The correct answer is mixed in at random, and every student sees the same order.
+- **Bulk add:** one question per line. Paste spreadsheet columns in the order question, correct answer, wrong 1, wrong 2, wrong 3 (tab-separated), or type `Question => correct | wrong 1 | wrong 2 | wrong 3`.
 - **How many:** 20 to 30 questions makes a fair game. The raft takes about 16 landings to fill on average.
+
+### Whiteboard
+
+While a question is on screen, the host can press **Whiteboard** to doodle an explanation (pen colors, sizes, eraser, undo). Press **Show to class** and the drawing appears on every student's screen. Students can close it and reopen it from a button in the corner. The game pauses its auto-advance while you use the whiteboard, and you press **Next turn** when you are ready. The drawing clears when the next turn starts.
 
 ### Changing the PIN
 

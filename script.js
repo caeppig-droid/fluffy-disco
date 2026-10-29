@@ -20,7 +20,8 @@
      --------------------------------------------------------- */
   const TEACHER_PIN = '8675309';
   const PEER_PREFIX = 'escape-island-v1-';
-  const STORE_Q = 'escapeIsland.questions.v1';
+  const STORE_Q = 'escapeIsland.questions.v2';
+  const STORE_Q_OLD = 'escapeIsland.questions.v1';
   const STORE_NAME = 'escapeIsland.name';
   const SESS_TOKEN = 'escapeIsland.token';
   const SESS_ROOM = 'escapeIsland.room';
@@ -55,30 +56,31 @@
 
   const COLORS = ['#e4572e', '#2b7fb8', '#7b4fd8', '#d6336c', '#2f8f4e', '#d98200', '#0f8b8d', '#8d5524'];
 
+  // [question, correct answer, [wrong answers]]
   const DEFAULT_QUESTIONS = [
-    ['What is 7 x 8?', '56 | fifty-six'],
-    ['What is 9 + 6?', '15 | fifteen'],
-    ['What is 100 - 35?', '65 | sixty-five'],
-    ['What is 6 x 7?', '42 | forty-two'],
-    ['How many sides does a hexagon have?', '6 | six'],
-    ['How many minutes are in one hour?', '60 | sixty'],
-    ['How many days are in one week?', '7 | seven'],
-    ['Which is bigger: 1/2 or 1/4?', '1/2 | one half | half'],
-    ['What planet do we live on?', 'Earth'],
-    ['What do plants need from the sun to make food?', 'sunlight | light | sun | light from the sun'],
-    ['What force pulls objects toward the Earth?', 'gravity'],
-    ['What do we call animals that eat only plants?', 'herbivore | herbivores'],
-    ['What is the largest ocean on Earth?', 'Pacific | Pacific Ocean'],
-    ['What is the capital city of Colorado?', 'Denver'],
-    ['What is the nickname of Colorado: the Centennial State or the Sunshine State?', 'Centennial | Centennial State'],
-    ['What is the plural of "mouse"?', 'mice'],
-    ['What is the past tense of "run"?', 'ran'],
-    ['What is the opposite of "ancient"?', 'modern | new | recent'],
-    ['A noun that names a specific person or place is called a ___ noun.', 'proper'],
-    ['What is the name for water that falls from clouds as rain, snow, or hail?', 'precipitation'],
-    ['What is the word for a story that is made up and not real?', 'fiction'],
-    ['How many legs does an insect have?', '6 | six'],
-    ['What are the three states of matter we learn about? (name one)', 'solid | liquid | gas']
+    ['What is 7 x 8?', '56', ['54', '63', '48']],
+    ['What is 9 + 6?', '15', ['14', '16', '13']],
+    ['What is 100 - 35?', '65', ['75', '55', '64']],
+    ['What is 6 x 7?', '42', ['36', '48', '49']],
+    ['How many sides does a hexagon have?', '6', ['5', '8', '7']],
+    ['How many minutes are in one hour?', '60', ['30', '100', '24']],
+    ['How many days are in one week?', '7', ['5', '6', '10']],
+    ['Which is bigger: 1/2 or 1/4?', '1/2', ['1/4', 'They are the same size']],
+    ['What planet do we live on?', 'Earth', ['Mars', 'Venus', 'Jupiter']],
+    ['What do plants need from the sun to make food?', 'Sunlight', ['Wind', 'Sand', 'Snow']],
+    ['What force pulls objects toward the Earth?', 'Gravity', ['Magnetism', 'Friction', 'Static']],
+    ['What do we call animals that eat only plants?', 'Herbivores', ['Carnivores', 'Omnivores', 'Scavengers']],
+    ['What is the largest ocean on Earth?', 'Pacific Ocean', ['Atlantic Ocean', 'Indian Ocean', 'Arctic Ocean']],
+    ['What is the capital city of Colorado?', 'Denver', ['Boulder', 'Colorado Springs', 'Aurora']],
+    ['What is the nickname of Colorado?', 'The Centennial State', ['The Sunshine State', 'The Lone Star State']],
+    ['What is the plural of "mouse"?', 'Mice', ['Mouses', 'Mices']],
+    ['What is the past tense of "run"?', 'Ran', ['Runned', 'Runs']],
+    ['What is the opposite of "ancient"?', 'Modern', ['Old', 'Tiny', 'Dusty']],
+    ['A noun that names a specific person or place is called a ___ noun.', 'Proper', ['Common', 'Plural', 'Action']],
+    ['What do we call water that falls from clouds as rain, snow, or hail?', 'Precipitation', ['Evaporation', 'Condensation', 'Erosion']],
+    ['What do we call a story that is made up and not real?', 'Fiction', ['Nonfiction', 'Biography', 'Atlas']],
+    ['How many legs does an insect have?', '6', ['4', '8', '10']],
+    ['Which of these is a state of matter?', 'Solid', ['Sound', 'Shadow', 'Heat']]
   ];
 
   /* ---------------------------------------------------------
@@ -136,10 +138,30 @@
 
   /* ---------------------------------------------------------
      QUESTION BANK (localStorage)
+     Each question: { id, q, a (correct answer), wrong: [1 to 3 wrong answers] }
      --------------------------------------------------------- */
   let questions = [];
+  const LETTERS = ['A', 'B', 'C', 'D'];
 
-  const validQ = (q) => q && typeof q.q === 'string' && typeof q.a === 'string' && q.q.trim() && q.a.trim();
+  const cleanText = (s, max) => String(s == null ? '' : s).replace(/\s+/g, ' ').trim().slice(0, max);
+  const sampleQuestions = () => DEFAULT_QUESTIONS.map(([q, a, w]) => ({ id: uid(), q, a, wrong: w.slice() }));
+  const playable = () => questions.filter(q => q.wrong.length >= 1);
+
+  // Returns { q } for a clean question object, or { error } describing what is missing.
+  function buildQuestion(q, a, wrongList, id) {
+    q = cleanText(q, 200);
+    a = cleanText(a, 80);
+    if (!q) return { error: 'Type the question.' };
+    if (!a) return { error: 'Type the correct answer.' };
+    const seen = new Set([a.toLowerCase()]);
+    const wrong = [];
+    wrongList.forEach(w => {
+      w = cleanText(w, 80);
+      if (w && !seen.has(w.toLowerCase())) { seen.add(w.toLowerCase()); wrong.push(w); }
+    });
+    if (!wrong.length) return { error: 'Add at least one wrong answer (different from the correct one).' };
+    return { q: { id: id || uid(), q, a, wrong: wrong.slice(0, 3) } };
+  }
 
   function loadQuestions() {
     const raw = local.get(STORE_Q);
@@ -147,55 +169,34 @@
       try {
         const arr = JSON.parse(raw);
         if (Array.isArray(arr)) {
-          questions = arr.filter(validQ).map(q => ({ id: q.id || uid(), q: q.q.trim(), a: q.a.trim() }));
+          questions = arr
+            .filter(x => x && typeof x.q === 'string' && typeof x.a === 'string' && x.q.trim() && x.a.trim())
+            .map(x => ({
+              id: x.id || uid(), q: x.q.trim(), a: x.a.trim(),
+              wrong: Array.isArray(x.wrong) ? x.wrong.map(w => cleanText(w, 80)).filter(Boolean).slice(0, 3) : []
+            }));
           return;
         }
       } catch (e) { /* fall through to samples */ }
     }
-    questions = DEFAULT_QUESTIONS.map(([q, a]) => ({ id: uid(), q, a }));
+    // First run of this version: start with the samples, and carry over any questions
+    // you typed in the older typed-answer version (they will be flagged as needing wrong answers).
+    questions = sampleQuestions();
+    const old = local.get(STORE_Q_OLD);
+    if (old) {
+      try {
+        const sampleTexts = new Set(DEFAULT_QUESTIONS.map(d => d[0]));
+        JSON.parse(old).forEach(o => {
+          if (o && typeof o.q === 'string' && typeof o.a === 'string' && !sampleTexts.has(o.q.trim())) {
+            const a = cleanText(String(o.a).split('|')[0], 80);
+            if (o.q.trim() && a) questions.push({ id: uid(), q: o.q.trim(), a, wrong: [] });
+          }
+        });
+      } catch (e) { /* ignore */ }
+    }
     saveQuestions();
   }
   function saveQuestions() { local.set(STORE_Q, JSON.stringify(questions)); }
-
-  /* ---------------------------------------------------------
-     ANSWER CHECKING
-     --------------------------------------------------------- */
-  function normalize(s) {
-    let t = String(s).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-    t = t.replace(/['’]/g, '');
-    t = t.replace(/[^a-z0-9\s/.]/g, ' ');     // punctuation and hyphens become spaces
-    t = t.replace(/\.(?!\d)/g, ' ');          // keep decimal points only
-    t = t.replace(/\s+/g, ' ').trim();
-    t = t.replace(/^(the|a|an) /, '');
-    return t;
-  }
-
-  function editDistance(a, b) {
-    const m = a.length, n = b.length;
-    if (Math.abs(m - n) > 2) return 99;
-    let prev = Array.from({ length: n + 1 }, (_, j) => j);
-    for (let i = 1; i <= m; i++) {
-      const cur = [i];
-      for (let j = 1; j <= n; j++) {
-        cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
-      }
-      prev = cur;
-    }
-    return prev[n];
-  }
-
-  function isCorrect(given, answerField) {
-    const g = normalize(given);
-    if (!g) return false;
-    return String(answerField).split('|').map(normalize).filter(Boolean).some(opt => {
-      if (g === opt) return true;
-      if (/\d/.test(opt)) return false;                 // numbers must match exactly
-      const tol = opt.length >= 10 ? 2 : opt.length >= 5 ? 1 : 0;
-      return tol > 0 && editDistance(g, opt) <= tol;    // forgive small typos on longer words
-    });
-  }
-
-  const displayAnswer = (a) => String(a).split('|').map(s => s.trim()).filter(Boolean).join(' / ');
 
   /* ---------------------------------------------------------
      NETWORK STATE
@@ -248,6 +249,8 @@
       hostPlays: true,
       peerToPid: {},
       lastSeen: {},
+      board: null,               // whiteboard currently shared with the class
+      paused: false,             // teacher is using the whiteboard: no auto-advance
       timer: null
     };
     H.players.push({ pid: 'host', name: hostName, color: COLORS[0], pos: 0, connected: true });
@@ -267,9 +270,12 @@
     return n;
   }
 
+  // Public snapshot. It never contains anyone's answer or the correct answer
+  // (until the reveal). Per-person details are added by withPrivate().
   function snapshot() {
     const inQ = (H.phase === 'question' || H.phase === 'reveal') && H.current;
     const cur = currentPlayer();
+    const ready = playable().length;
     return {
       rev: H.rev,
       phase: H.phase,
@@ -277,6 +283,7 @@
       hostName: H.hostName,
       hostPlays: H.hostPlays,
       autoContinue: H.autoContinue,
+      paused: H.paused,
       players: H.players.map(p => ({ pid: p.pid, name: p.name, color: p.color, pos: p.pos, connected: p.connected, isHost: p.pid === 'host' })),
       turnPid: cur ? cur.pid : null,
       raft: H.raft.slice(),
@@ -284,28 +291,46 @@
       roll: { seq: H.roll.seq, value: H.roll.value, pid: H.roll.pid },
       deckLeft: H.deck.length,
       totalQ: H.totalQ,
-      qCount: questions.length,
-      question: inQ ? { id: H.current.id, num: H.asked, text: H.current.q } : null,
-      answered: Object.keys(H.answers),
+      qCount: ready,
+      qSkipped: questions.length - ready,
+      question: inQ ? { id: H.current.id, num: H.asked, text: H.current.q, choices: H.current.choices.slice() } : null,
+      answered: Object.keys(H.answers),            // who has answered, not what they picked
       landed: H.landed,
-      reveal: H.reveal,
+      reveal: H.phase === 'reveal' ? H.reveal : null,   // { correctIdx, right, total }
+      boardShared: !!H.board,
       log: H.log.slice(-6)
     };
   }
 
+  // Each student only ever receives THEIR OWN pick (and whether it was right, after the reveal).
+  function withPrivate(base, pid) {
+    const s = Object.assign({}, base, { mine: null });
+    if (pid && H.current && (H.phase === 'question' || H.phase === 'reveal') && Object.prototype.hasOwnProperty.call(H.answers, pid)) {
+      s.mine = { choice: H.answers[pid] };
+      if (H.phase === 'reveal') s.mine.correct = H.answers[pid] === H.current.correctIdx;
+    }
+    return s;
+  }
+
+  // Extra data only the host's own screen gets.
+  function hostExtra() {
+    const extra = {};
+    if (H.current && (H.phase === 'question' || H.phase === 'reveal')) {
+      extra.picks = Object.assign({}, H.answers);          // pid -> choice index
+      if (H.phase === 'question' && !H.players.some(p => p.pid === 'host')) extra.correctIdx = H.current.correctIdx;
+    }
+    return extra;
+  }
+
   function broadcast() {
     H.rev++;
-    const snap = snapshot();
+    const base = snapshot();
     Object.values(net.conns).forEach(c => {
-      if (c && c.open) { try { c.send({ t: 'state', s: snap }); } catch (e) { /* ignore */ } }
+      if (c && c.open) {
+        try { c.send({ t: 'state', s: withPrivate(base, H.peerToPid[c.peer]) }); } catch (e) { /* ignore */ }
+      }
     });
-    // The host renders the same snapshot locally. Only a non-playing host
-    // (the facilitator) gets to peek at the correct answer.
-    const extra = {};
-    if (H.current && (H.phase === 'question') && !H.players.some(p => p.pid === 'host')) {
-      extra.hostAnswer = displayAnswer(H.current.a);
-    }
-    applyState(snap, extra);
+    applyState(withPrivate(base, 'host'), hostExtra());
   }
 
   function advanceTurn() {
@@ -318,13 +343,18 @@
   }
 
   /* ----- Host: game flow ----- */
+  function sendToAll(msg) {
+    Object.values(net.conns).forEach(c => { if (c && c.open) { try { c.send(msg); } catch (e) { /* ignore */ } } });
+  }
+
   function hostStart() {
     loadQuestions();
-    if (!questions.length) { toast('Add at least one question in Teacher Mode first.'); return; }
+    const ready = playable();
+    if (!ready.length) { toast('Add at least one question with answer choices in Teacher Mode first.'); return; }
     if (!H.players.some(p => p.connected)) { toast('Wait for at least one player to join.'); return; }
 
     clearTimeout(H.timer);
-    H.deck = shuffle(questions.map(q => ({ id: uid(), q: q.q, a: q.a })));
+    H.deck = shuffle(ready.map(q => ({ id: uid(), q: q.q, a: q.a, wrong: q.wrong.slice() })));
     H.totalQ = H.deck.length;
     H.asked = 0;
     H.raft = [];
@@ -335,7 +365,9 @@
     H.answers = {};
     H.landed = null;
     H.reveal = null;
+    H.paused = false;
     H.log = [];
+    hostClearBoard();
     H.phase = 'roll';
     hostLog('The crew washes ashore. Find supplies and build a raft!');
     broadcast();
@@ -386,7 +418,10 @@
       broadcast();
       return;
     }
-    H.current = q;
+    // Mix the correct answer in with the wrong ones. One shuffle per question, so
+    // every student sees the same order (handy when you talk it through).
+    const opts = shuffle([{ t: q.a, ok: true }].concat(q.wrong.map(t => ({ t, ok: false }))));
+    H.current = { id: q.id, q: q.q, choices: opts.map(o => o.t), correctIdx: opts.findIndex(o => o.ok) };
     H.asked++;
     H.answers = {};
     H.reveal = null;
@@ -399,9 +434,9 @@
     if (H.phase !== 'question' || !H.current) return;
     if (!msg || msg.qid !== H.current.id) return;
     if (!H.players.some(p => p.pid === pid)) return;
+    if (!Number.isInteger(msg.choice) || msg.choice < 0 || msg.choice >= H.current.choices.length) return;
     if (Object.prototype.hasOwnProperty.call(H.answers, pid)) return;
-    const text = String(msg.text == null ? '' : msg.text).replace(/\s+/g, ' ').trim().slice(0, 80);
-    H.answers[pid] = text || '(no answer)';
+    H.answers[pid] = msg.choice;
     if (!checkQuestionDone()) broadcast();
   }
 
@@ -418,23 +453,22 @@
 
   function resolveQuestion() {
     if (H.phase !== 'question' || !H.current) return;
-    const results = H.players.map(p => {
-      const has = Object.prototype.hasOwnProperty.call(H.answers, p.pid);
-      return { pid: p.pid, text: has ? H.answers[p.pid] : null, correct: has && isCorrect(H.answers[p.pid], H.current.a) };
-    });
-    const right = results.filter(r => r.correct).length;
-    H.reveal = { answer: displayAnswer(H.current.a), results };
+    const who = Object.keys(H.answers);
+    const right = who.filter(pid => H.answers[pid] === H.current.correctIdx).length;
+    H.reveal = { correctIdx: H.current.correctIdx, right, total: who.length };
     H.phase = 'reveal';
-    hostLog(`${right} of ${results.length} answered correctly.`);
+    hostLog(who.length ? `${right} of ${who.length} answered correctly.` : 'Nobody answered.');
     broadcast();
 
     clearTimeout(H.timer);
-    if (H.autoContinue) H.timer = setTimeout(hostContinue, REVEAL_MS);
+    if (H.autoContinue && !H.paused) H.timer = setTimeout(hostContinue, REVEAL_MS);
   }
 
   function hostContinue() {
     if (H.phase !== 'reveal') return;
     clearTimeout(H.timer);
+    H.paused = false;
+    hostClearBoard();
     if (H.raft.length >= TARGET) {
       H.phase = 'won';
       hostLog('The raft is ready. You escaped!');
@@ -449,6 +483,47 @@
       H.reveal = null;
       H.answers = {};
     }
+    broadcast();
+  }
+
+  /* ----- Host: whiteboard sharing ----- */
+  // The teacher opening the whiteboard pauses auto-advance so the class is not
+  // moved on mid-explanation. "Next turn" resumes.
+  function hostPause() {
+    if (!H || H.paused) return;
+    if (H.phase === 'question' || H.phase === 'reveal') {
+      H.paused = true;
+      if (H.phase === 'reveal') clearTimeout(H.timer);
+      broadcast();
+    }
+  }
+
+  function hostShareBoard(strokes) {
+    if (!H || !strokes.length) return 'empty';
+    const board = { id: uid(6), strokes };
+    if (JSON.stringify(board).length > 400000) return 'toolarge';
+    H.board = board;
+    Object.values(net.conns).forEach(c => { if (c && c.open) sendBoard(c, board); });
+    broadcast();
+    return 'ok';
+  }
+
+  // Sent in small pieces so it works on every browser's data-channel size limit.
+  function sendBoard(conn, board) {
+    const json = JSON.stringify(board);
+    const size = 12000, n = Math.ceil(json.length / size);
+    try {
+      for (let i = 0; i < n; i++) conn.send({ t: 'boardpart', id: board.id, i, n, d: json.slice(i * size, (i + 1) * size) });
+    } catch (e) { /* ignore */ }
+  }
+
+  function hostClearBoard() {
+    if (H && H.board) { H.board = null; sendToAll({ t: 'board', board: null }); }
+  }
+  function hostHideBoard() {
+    if (!H) return;
+    H.board = null;
+    sendToAll({ t: 'board', board: null });
     broadcast();
   }
 
@@ -508,6 +583,7 @@
     H.peerToPid[conn.peer] = token;
     H.lastSeen[token] = Date.now();
     try { conn.send({ t: 'welcome', pid: token }); } catch (e) { /* ignore */ }
+    if (H.board) sendBoard(conn, H.board);
     broadcast();
   }
 
@@ -670,11 +746,64 @@
      --------------------------------------------------------- */
   let lastRev = -1;
   let lastHostMsg = 0;
+  let boardData = null;   // whiteboard drawing from the teacher (students)
+  let boardAsm = null;    // pieces of a drawing that is still arriving
+
+  function cleanBoard(b) {
+    if (!b || !Array.isArray(b.strokes)) return null;
+    const out = [];
+    b.strokes.slice(0, 400).forEach(st => {
+      if (!st || !Array.isArray(st.p)) return;
+      let pts = st.p.slice(0, 6000).map(Number).filter(Number.isFinite);
+      if (pts.length < 2) return;
+      if (pts.length % 2) pts = pts.slice(0, -1);
+      out.push({
+        c: /^#[0-9a-f]{6}$/i.test(st.c) ? st.c : '#000000',
+        w: Math.min(80, Math.max(1, Number(st.w) || 6)),
+        p: pts
+      });
+    });
+    return { id: String(b.id || ''), strokes: out };
+  }
+
+  function receiveBoardPart(m) {
+    if (!Number.isInteger(m.n) || m.n < 1 || m.n > 100 || !Number.isInteger(m.i) || m.i < 0 || m.i >= m.n || typeof m.d !== 'string') return;
+    if (!boardAsm || boardAsm.id !== m.id) boardAsm = { id: m.id, n: m.n, parts: [], got: 0 };
+    if (boardAsm.parts[m.i] !== undefined) return;
+    boardAsm.parts[m.i] = m.d;
+    boardAsm.got++;
+    if (boardAsm.got === boardAsm.n) {
+      let parsed = null;
+      try { parsed = cleanBoard(JSON.parse(boardAsm.parts.join(''))); } catch (e) { /* ignore */ }
+      boardAsm = null;
+      if (parsed) { boardData = parsed; boardChanged(true); }
+    }
+  }
+
+  function boardChanged(open) {
+    if (net.role !== 'client') return;
+    if (boardData) { if (open) openBoardView(); }
+    else closeBoardView();
+    updateBoardBtn();
+  }
+  function openBoardView() {
+    const c = $('#boardCanvas');
+    drawStrokes(c.getContext('2d'), boardData.strokes, c.width, c.height);
+    $('#boardModal').classList.remove('hidden');
+    updateBoardBtn();
+  }
+  function closeBoardView() { $('#boardModal').classList.add('hidden'); updateBoardBtn(); }
+  function updateBoardBtn() {
+    const show = net.role === 'client' && !!boardData && $('#boardModal').classList.contains('hidden') && !!S && S.phase !== 'lobby';
+    $('#showBoardBtn').classList.toggle('hidden', !show);
+  }
 
   function onClientData(msg) {
     if (!msg || typeof msg !== 'object') return;
     lastHostMsg = Date.now();
     if (msg.t === 'hb') return;
+    if (msg.t === 'board') { boardData = msg.board ? cleanBoard(msg.board) : null; boardAsm = null; boardChanged(true); return; }
+    if (msg.t === 'boardpart') { receiveBoardPart(msg); return; }
     if (msg.t === 'state' && msg.s) {
       if (msg.s.rev <= lastRev) return;      // stale or duplicate packet
       lastRev = msg.s.rev;
@@ -708,9 +837,9 @@
     else if (net.hostConn && net.hostConn.open) net.hostConn.send({ t: 'roll' });
   }
 
-  function actAnswer(qid, text) {
-    if (net.role === 'host') hostAnswer('host', { qid, text });
-    else if (net.hostConn && net.hostConn.open) net.hostConn.send({ t: 'answer', qid, text });
+  function actAnswer(qid, choice) {
+    if (net.role === 'host') hostAnswer('host', { qid, choice });
+    else if (net.hostConn && net.hostConn.open) net.hostConn.send({ t: 'answer', qid, choice });
   }
 
   function leaveGame() {
@@ -775,9 +904,10 @@
       $('#optHostPlays').checked = S.hostPlays;
       $('#optAutoContinue').checked = S.autoContinue;
       const qc = $('#lobbyQCount');
-      qc.textContent = S.qCount + ' question' + (S.qCount === 1 ? '' : 's') + ' loaded.' +
+      qc.textContent = S.qCount + ' question' + (S.qCount === 1 ? '' : 's') + ' ready.' +
+        (S.qSkipped ? ' ' + S.qSkipped + ' skipped: they need a wrong answer (open Teacher Mode).' : '') +
         (S.qCount < 20 ? ' Add more in Teacher Mode (about 20+ makes the raft winnable).' : '');
-      qc.classList.toggle('warn', S.qCount < 20);
+      qc.classList.toggle('warn', S.qCount < 20 || S.qSkipped > 0);
       $('#startBtn').disabled = !S.players.some(p => p.connected);
     }
   }
@@ -922,6 +1052,8 @@
     renderPanel();
     renderQuestion();
     renderEnd(prev);
+    renderWbPanel();
+    updateBoardBtn();
   }
 
   function renderBoardHighlight() {
@@ -1028,27 +1160,55 @@
   }
 
   /* ----- Question / reveal modal ----- */
-  let qView = { id: null, submitted: false, revealStarted: false };
+  let qView = { id: null, choice: null, submitted: false, revealStarted: false };
+  const resetQView = () => { qView = { id: null, choice: null, submitted: false, revealStarted: false }; };
+
+  function buildChoices() {
+    const box = $('#qChoices');
+    box.replaceChildren();
+    S.question.choices.forEach((txt, i) => {
+      const b = el('button', 'choice');
+      b.type = 'button';
+      b.dataset.i = i;
+      b.append(el('span', 'letter', LETTERS[i]), el('span', 'text', txt), el('span', 'mark'), el('span', 'picks'));
+      b.addEventListener('click', () => selectChoice(i));
+      box.append(b);
+    });
+  }
+
+  function canAnswer() {
+    if (!S || S.phase !== 'question' || !S.question) return false;
+    const me = myPid();
+    return S.players.some(p => p.pid === me) && !S.answered.includes(me) && !qView.submitted;
+  }
+
+  function selectChoice(i) {
+    if (!canAnswer()) return;
+    qView.choice = i;
+    renderQuestion();
+  }
 
   function renderQuestion() {
     const modal = $('#qModal');
     const active = (S.phase === 'question' || S.phase === 'reveal') && S.question;
-    if (!active) {
-      modal.classList.add('hidden');
-      qView = { id: null, submitted: false, revealStarted: false };
-      return;
-    }
+    if (!active) { modal.classList.add('hidden'); resetQView(); return; }
     modal.classList.remove('hidden');
 
     const me = myPid();
     const isHost = net.role === 'host';
-    const isNew = qView.id !== S.question.id;
-    if (isNew) {
-      qView = { id: S.question.id, submitted: false, revealStarted: false };
-      $('#qInput').value = '';
-    }
     const imPlayer = S.players.some(p => p.pid === me);
-    const answered = S.answered.includes(me) || qView.submitted;
+    const isQ = S.phase === 'question';
+    const rev = S.phase === 'reveal' ? S.reveal : null;
+
+    if (qView.id !== S.question.id) {
+      resetQView();
+      qView.id = S.question.id;
+      buildChoices();
+      if (isHost) wbReset();     // fresh whiteboard for each new question
+    }
+    const locked = S.answered.includes(me) || qView.submitted;
+    const chosen = S.mine ? S.mine.choice : qView.choice;
+    const interactive = isQ && imPlayer && !locked;
 
     // Where did we land?
     const L = S.landed;
@@ -1058,18 +1218,39 @@
       else if (ITEMS[L.type]) { landed.textContent = L.name + ' landed on ' + ITEMS[L.type].label + ', but the raft is already full.'; landed.className = 'q-landed'; }
       else { landed.textContent = L.name + ' landed on ' + (L.type === 'start' ? 'the start beach.' : 'empty sand.'); landed.className = 'q-landed'; }
     }
-
     const full = S.raft.length >= S.target;
-    const leftAfter = S.deckLeft;
     $('#qMeta').textContent = (full ? 'Last question: answer to launch the raft! ' : '') +
-      'Question ' + S.question.num + ' · ' + leftAfter + ' more after this one';
+      'Question ' + S.question.num + ' · ' + S.deckLeft + ' more after this one';
     $('#qText').textContent = S.question.text;
 
-    const isQ = S.phase === 'question';
-    $('#qAnswerArea').classList.toggle('hidden', !(isQ && imPlayer && !answered));
+    // Choices. Students only ever see their own pick. The host also sees who picked what.
+    const correctIdx = rev ? rev.correctIdx : (isQ ? S_extra.correctIdx : undefined);
+    const picks = isHost ? (S_extra.picks || {}) : {};
+    $$('#qChoices .choice').forEach((btn, i) => {
+      btn.disabled = !interactive;
+      btn.classList.toggle('selected', chosen === i && !rev);
+      btn.classList.toggle('correct', correctIdx === i);
+      const wrongPick = !!rev && !!S.mine && S.mine.choice === i && !S.mine.correct;
+      btn.classList.toggle('wrongpick', wrongPick);
+      btn.classList.toggle('dim', !!rev && !isHost && correctIdx !== i && !wrongPick);
+      btn.querySelector('.mark').textContent = correctIdx === i ? '✓' : (wrongPick ? '✗' : '');
+      const pk = btn.querySelector('.picks');
+      pk.replaceChildren();
+      S.players.filter(p => picks[p.pid] === i).forEach(p => {
+        const chip = el('span', 'pickchip');
+        const d = el('span', 'dot', initial(p.name));
+        d.style.background = p.color;
+        chip.append(d, document.createTextNode(p.name));
+        pk.append(chip);
+      });
+    });
+
+    $('#qAnswerArea').classList.toggle('hidden', !interactive);
+    $('#qSubmit').disabled = chosen == null;
+
     const waitEl = $('#qWait');
     const waiting = S.players.filter(p => p.connected && !S.answered.includes(p.pid)).length;
-    if (isQ && imPlayer && answered) {
+    if (isQ && imPlayer && locked) {
       waitEl.textContent = waiting > 0 ? 'Answer locked in! Waiting for ' + waiting + ' more…' : 'Answer locked in!';
       waitEl.classList.remove('hidden');
     } else if (isQ && !imPlayer) {
@@ -1077,11 +1258,13 @@
       waitEl.classList.remove('hidden');
     } else waitEl.classList.add('hidden');
 
-    const ha = $('#qHostAnswer');
-    if (isQ && S_extra.hostAnswer) { ha.textContent = 'Correct answer (only you can see this): ' + S_extra.hostAnswer; ha.classList.remove('hidden'); }
-    else ha.classList.add('hidden');
+    const hn = $('#qHostAnswer');
+    if (isHost) {
+      hn.textContent = imPlayer ? 'Only you can see who picked each answer.' : 'Only you can see the correct answer and who picked each answer.';
+      hn.classList.remove('hidden');
+    } else hn.classList.add('hidden');
 
-    // Who has answered
+    // Who has answered (names only, never what they picked)
     const prog = $('#qProgress');
     prog.replaceChildren();
     if (isQ) {
@@ -1097,64 +1280,48 @@
     prog.classList.toggle('hidden', !isQ);
 
     // Reveal
-    const rev = $('#qReveal');
-    rev.classList.toggle('hidden', S.phase !== 'reveal');
-    if (S.phase === 'reveal' && S.reveal) {
-      $('#qCorrect').textContent = S.reveal.answer;
-      const mineR = S.reveal.results.find(r => r.pid === me);
+    $('#qReveal').classList.toggle('hidden', !rev);
+    if (rev) {
       const verdict = $('#qVerdict');
-      if (mineR) {
-        verdict.textContent = mineR.correct ? 'You got it!' : 'Not quite, nice try!';
-        verdict.className = 'q-verdict ' + (mineR.correct ? 'good' : 'meh');
+      if (S.mine) {
+        verdict.textContent = S.mine.correct ? 'You got it!' : 'Not quite, nice try!';
+        verdict.className = 'q-verdict ' + (S.mine.correct ? 'good' : 'meh');
+      } else if (imPlayer) {
+        verdict.textContent = 'No answer this time.';
+        verdict.className = 'q-verdict meh';
       } else {
-        const right = S.reveal.results.filter(r => r.correct).length;
-        verdict.textContent = right + ' of ' + S.reveal.results.length + ' answered correctly';
+        verdict.textContent = rev.total ? rev.right + ' of ' + rev.total + ' answered correctly' : 'No answers';
         verdict.className = 'q-verdict meh';
       }
-      const rl = $('#qResults');
-      rl.replaceChildren();
-      S.reveal.results.forEach(r => {
-        const p = S.players.find(x => x.pid === r.pid);
-        if (!p) return;
-        const li = el('li', r.text === null ? '' : (r.correct ? 'right' : 'wrong'));
-        const d = el('span', 'dot', initial(p.name));
-        d.style.background = p.color;
-        li.append(d, el('span', '', p.name), el('span', 'mark', r.text === null ? '–' : (r.correct ? '✓' : '✗')), el('span', 'ans', r.text === null ? 'no answer' : r.text));
-        rl.append(li);
-      });
+      $('#qCorrect').textContent = 'Correct answer: ' + LETTERS[rev.correctIdx] + '. ' + S.question.choices[rev.correctIdx];
+      $('#qTeam').textContent = imPlayer && rev.total ? 'Crew: ' + rev.right + ' of ' + rev.total + ' got it.' : '';
 
+      const auto = S.autoContinue && !S.paused;
       const cd = $('#qCountdown');
-      cd.classList.toggle('hidden', !S.autoContinue);
-      if (S.autoContinue && !qView.revealStarted) {
+      cd.classList.toggle('hidden', !auto);
+      if (auto && !qView.revealStarted) {
         cd.style.setProperty('--reveal-ms', REVEAL_MS + 'ms');
         cd.classList.remove('run');
         void cd.offsetWidth;
         cd.classList.add('run');
       }
       qView.revealStarted = true;
-      $('#qNextNote').textContent = S.autoContinue
-        ? 'The next turn starts in a moment.'
-        : (isHost ? 'Press “Next turn” when you are ready.' : 'Waiting for the host to start the next turn…');
+      $('#qNextNote').textContent = S.paused
+        ? (isHost ? 'Paused while you use the whiteboard. Press “Next turn” when you are ready.' : 'Your teacher is helping everyone understand. Hang tight!')
+        : S.autoContinue ? 'The next turn starts in a moment.'
+          : (isHost ? 'Press “Next turn” when you are ready.' : 'Waiting for the host to start the next turn…');
     }
 
     $('#qSkip').classList.toggle('hidden', !(isHost && isQ));
-    $('#qContinue').classList.toggle('hidden', !(isHost && S.phase === 'reveal'));
-
-    if (isNew && isQ && imPlayer) setTimeout(() => { const i = $('#qInput'); if (!i.closest('.hidden')) i.focus(); }, 60);
+    $('#qContinue').classList.toggle('hidden', !(isHost && !!rev));
+    $('#qWhiteboard').classList.toggle('hidden', !isHost);
   }
 
   function submitAnswer() {
-    if (!S || S.phase !== 'question' || !S.question) return;
-    const input = $('#qInput');
-    const text = input.value.trim();
-    if (!text) { input.focus(); toast('Type an answer first.'); return; }
-    if (qView.submitted) return;
+    if (!canAnswer() || qView.choice == null) return;
     qView.submitted = true;
-    $('#qAnswerArea').classList.add('hidden');
-    const w = $('#qWait');
-    w.textContent = 'Answer locked in!';
-    w.classList.remove('hidden');
-    actAnswer(S.question.id, text);
+    actAnswer(S.question.id, qView.choice);
+    renderQuestion();
   }
 
   /* ----- End screens ----- */
@@ -1254,14 +1421,17 @@
     updateLobbyCountFromStorage();
   }
   function updateLobbyCountFromStorage() {
-    if (net.role === 'host' && S && S.phase === 'lobby') { S.qCount = questions.length; renderLobby(); }
+    if (net.role === 'host' && S && S.phase === 'lobby') { S.qCount = playable().length; S.qSkipped = questions.length - S.qCount; renderLobby(); }
   }
 
   function renderTeacher() {
+    const ready = playable().length;
+    const skipped = questions.length - ready;
     const cnt = $('#tCount');
     cnt.textContent = questions.length + ' question' + (questions.length === 1 ? '' : 's') + ' saved.' +
-      (questions.length < 20 ? ' Tip: players need about 16 turns on average to fill the raft, so 20 to 30 questions makes a fair game.' : '');
-    cnt.classList.toggle('warn', questions.length < 20);
+      (skipped ? ' ' + skipped + ' still need a wrong answer and will be skipped.' : '') +
+      (ready < 20 ? ' Tip: players need about 16 turns on average to fill the raft, so 20 to 30 questions makes a fair game.' : '');
+    cnt.classList.toggle('warn', ready < 20 || skipped > 0);
 
     const list = $('#tList');
     list.replaceChildren();
@@ -1270,23 +1440,37 @@
     questions.forEach(q => {
       const li = el('li', 'trow');
       if (editingId === q.id) {
-        const qi = el('input'); qi.type = 'text'; qi.value = q.q; qi.maxLength = 200; qi.setAttribute('aria-label', 'Edit question');
-        const ai = el('input'); ai.type = 'text'; ai.value = q.a; ai.maxLength = 120; ai.setAttribute('aria-label', 'Edit answer');
+        li.classList.add('editing');
+        const mk = (val, label, cls) => {
+          const i = el('input', cls); i.type = 'text'; i.value = val; i.maxLength = 200; i.setAttribute('aria-label', label); return i;
+        };
+        const qi = mk(q.q, 'Edit question');
+        const ai = mk(q.a, 'Edit correct answer', 't-good');
+        const wi = [0, 1, 2].map(k => mk(q.wrong[k] || '', 'Edit wrong answer ' + (k + 1)));
         const btns = el('div', 'tbtns');
         const save = el('button', 'btn small palm', 'Save'); save.type = 'button';
         const cancel = el('button', 'btn small ghost', 'Cancel'); cancel.type = 'button';
         const doSave = () => {
-          if (!qi.value.trim() || !ai.value.trim()) { toast('Question and answer cannot be empty.'); return; }
-          q.q = qi.value.trim(); q.a = ai.value.trim();
+          const res = buildQuestion(qi.value, ai.value, wi.map(x => x.value), q.id);
+          if (res.error) { toast(res.error); return; }
+          Object.assign(q, res.q);
           saveQuestions(); editingId = null; renderTeacher();
         };
         save.addEventListener('click', doSave);
         cancel.addEventListener('click', () => { editingId = null; renderTeacher(); });
-        [qi, ai].forEach(i => i.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); doSave(); } }));
+        [qi, ai].concat(wi).forEach(i => i.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); doSave(); } }));
         btns.append(save, cancel);
-        li.append(qi, ai, btns);
+        li.append(qi, ai, wi[0], wi[1], wi[2], btns);
         setTimeout(() => qi.focus(), 20);
       } else {
+        const main = el('div', 'tmain');
+        main.append(el('div', 'tq', q.q));
+        const opts = el('div', 'topts');
+        opts.append(el('span', 'tchip good', '✓ ' + q.a));
+        q.wrong.forEach(w => opts.append(el('span', 'tchip bad', w)));
+        if (!q.wrong.length) opts.append(el('span', 'tchip warn', 'Needs at least 1 wrong answer'));
+        main.append(opts);
+
         const edit = el('button', 'btn small ghost', 'Edit'); edit.type = 'button';
         const del = el('button', 'btn small ghost danger', 'Delete'); del.type = 'button';
         edit.addEventListener('click', () => { editingId = q.id; renderTeacher(); });
@@ -1296,18 +1480,19 @@
           saveQuestions(); renderTeacher();
         });
         const btns = el('div', 'tbtns'); btns.append(edit, del);
-        li.append(el('div', 'tq', q.q), el('div', 'ta', displayAnswer(q.a)), btns);
+        li.append(main, btns);
       }
       list.append(li);
     });
   }
 
-  function addQuestion(qText, aText) {
-    qText = qText.trim(); aText = aText.trim();
-    if (!qText || !aText) return false;
-    questions.push({ id: uid(), q: qText, a: aText });
+  // Returns an error message, or null when the question was added.
+  function addQuestion(qText, aText, wrongs) {
+    const res = buildQuestion(qText, aText, wrongs);
+    if (res.error) return res.error;
+    questions.push(res.q);
     saveQuestions();
-    return true;
+    return null;
   }
 
   function bulkAdd() {
@@ -1315,18 +1500,25 @@
     let added = 0, skipped = 0;
     ta.value.split(/\r?\n/).forEach(line => {
       if (!line.trim()) return;
-      let parts = line.includes('\t') ? line.split('\t') : line.split('=>');
-      if (parts.length < 2) { skipped++; return; }
-      const q = parts[0], a = parts.slice(1).join(' ').replace(/\t/g, ' ');
-      if (addQuestion(q, a)) added++; else skipped++;
+      let q, a, wrongs;
+      if (line.includes('\t')) {
+        const c = line.split('\t');
+        q = c[0]; a = c[1]; wrongs = c.slice(2);
+      } else if (line.includes('=>')) {
+        const parts = line.split('=>');
+        q = parts[0];
+        const answers = parts.slice(1).join('=>').split('|');
+        a = answers[0]; wrongs = answers.slice(1);
+      } else { skipped++; return; }
+      if (addQuestion(q, a || '', wrongs || [])) skipped++; else added++;
     });
     ta.value = '';
     renderTeacher();
-    toast(added + ' added' + (skipped ? ', ' + skipped + ' line' + (skipped === 1 ? '' : 's') + ' skipped' : '') + '.');
+    toast(added + ' added' + (skipped ? ', ' + skipped + ' line' + (skipped === 1 ? '' : 's') + ' skipped (each needs a question, a correct answer, and at least one wrong answer)' : '') + '.');
   }
 
   function exportQuestions() {
-    const data = JSON.stringify(questions.map(({ q, a }) => ({ q, a })), null, 2);
+    const data = JSON.stringify(questions.map(({ q, a, wrong }) => ({ q, a, wrong })), null, 2);
     const url = URL.createObjectURL(new Blob([data], { type: 'application/json' }));
     const a = el('a'); a.href = url; a.download = 'escape-the-island-questions.json';
     document.body.append(a); a.click(); a.remove();
@@ -1343,13 +1535,126 @@
         let added = 0;
         arr.forEach(item => {
           const q = item && (item.q || item.question), a = item && (item.a || item.answer);
-          if (typeof q === 'string' && typeof a === 'string' && addQuestion(q, a)) added++;
+          if (typeof q !== 'string' || typeof a !== 'string') return;
+          const wrong = Array.isArray(item.wrong) ? item.wrong : [];
+          const res = buildQuestion(q, a, wrong);
+          if (res.q) { questions.push(res.q); added++; }
+          else if (q.trim() && a.trim()) { questions.push({ id: uid(), q: cleanText(q, 200), a: cleanText(a, 80), wrong: [] }); added++; }
         });
+        saveQuestions();
         renderTeacher();
         toast(added + ' question' + (added === 1 ? '' : 's') + ' imported.');
       } catch (e) { toast('That file could not be read. Use a file exported from this game.'); }
     };
     reader.readAsText(file);
+  }
+
+  /* ---------------------------------------------------------
+     WHITEBOARD (teacher draws; strokes are sent to every student)
+     Drawing is stored as vector strokes in a 1200x720 space, so it stays
+     crisp on any screen and is tiny to send.
+     --------------------------------------------------------- */
+  const wb = { strokes: [], color: '#1d3948', width: 6, erase: false, cur: null };
+
+  function drawStroke(ctx, st) {
+    const p = st.p;
+    ctx.strokeStyle = st.c; ctx.fillStyle = st.c; ctx.lineWidth = st.w;
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    if (p.length < 4) { ctx.beginPath(); ctx.arc(p[0], p[1], st.w / 2, 0, Math.PI * 2); ctx.fill(); return; }
+    ctx.beginPath();
+    ctx.moveTo(p[0], p[1]);
+    for (let i = 2; i < p.length - 2; i += 2) {
+      ctx.quadraticCurveTo(p[i], p[i + 1], (p[i] + p[i + 2]) / 2, (p[i + 1] + p[i + 3]) / 2);
+    }
+    ctx.lineTo(p[p.length - 2], p[p.length - 1]);
+    ctx.stroke();
+  }
+  function drawStrokes(ctx, strokes, w, h) {
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, w, h);
+    strokes.forEach(st => drawStroke(ctx, st));
+  }
+
+  function wbRedraw() { const c = $('#wbCanvas'); drawStrokes(c.getContext('2d'), wb.strokes, c.width, c.height); }
+  function wbReset() { wb.strokes = []; wb.cur = null; if (!$('#wbModal').classList.contains('hidden')) wbRedraw(); }
+  function wbSyncTools() {
+    $$('#wbColors .wb-swatch').forEach(b => b.classList.toggle('active', !wb.erase && b.dataset.color === wb.color));
+    $$('#wbSizes .wb-size').forEach(b => b.classList.toggle('active', Number(b.dataset.w) === wb.width));
+    $('#wbEraser').classList.toggle('active', wb.erase);
+    $('#wbEraser').setAttribute('aria-pressed', String(wb.erase));
+  }
+
+  function openWhiteboard() {
+    if (net.role !== 'host' || !S || S.phase === 'lobby') return;
+    hostPause();
+    $('#wbModal').classList.remove('hidden');
+    wbRedraw();
+    renderWbPanel();
+  }
+  function closeWb() { $('#wbModal').classList.add('hidden'); }
+
+  // Side panel of the whiteboard: the question and who picked what (host only).
+  function renderWbPanel() {
+    if (net.role !== 'host' || $('#wbModal').classList.contains('hidden') || !S) return;
+    const q = $('#wbQ'), ul = $('#wbPicks');
+    ul.replaceChildren();
+    $('#wbHide').classList.toggle('hidden', !S.boardShared);
+    $('#wbShow').textContent = S.boardShared ? 'Update what the class sees' : 'Show to class';
+    if (!S.question || !(S.phase === 'question' || S.phase === 'reveal')) { q.textContent = 'No question on screen right now.'; return; }
+    q.textContent = S.question.text;
+    const picks = S_extra.picks || {};
+    const correctIdx = S.phase === 'reveal' && S.reveal ? S.reveal.correctIdx : S_extra.correctIdx;
+    S.question.choices.forEach((txt, i) => {
+      const li = el('li', correctIdx === i ? 'good' : '');
+      li.append(el('span', '', LETTERS[i] + '. ' + txt + (correctIdx === i ? ' ✓' : '')));
+      const who = S.players.filter(p => picks[p.pid] === i).map(p => p.name);
+      li.append(el('div', 'who', who.length ? who.join(', ') : 'no one yet'));
+      ul.append(li);
+    });
+  }
+
+  function initWhiteboard() {
+    const c = $('#wbCanvas');
+    const pt = e => {
+      const r = c.getBoundingClientRect();
+      return [Math.round((e.clientX - r.left) * c.width / r.width), Math.round((e.clientY - r.top) * c.height / r.height)];
+    };
+    c.addEventListener('pointerdown', e => {
+      if (e.button > 0) return;
+      e.preventDefault();
+      if (wb.strokes.length >= 300) { toast('That is a lot of strokes. Undo or clear to keep drawing.'); return; }
+      try { c.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ }
+      wb.cur = { c: wb.erase ? '#ffffff' : wb.color, w: wb.erase ? wb.width * 3 : wb.width, p: pt(e) };
+      wb.strokes.push(wb.cur);
+      wbRedraw();
+    });
+    c.addEventListener('pointermove', e => {
+      if (!wb.cur) return;
+      const p = wb.cur.p, n = pt(e), lx = p[p.length - 2], ly = p[p.length - 1];
+      if (Math.abs(n[0] - lx) + Math.abs(n[1] - ly) < 3 || p.length > 6000) return;
+      const ctx = c.getContext('2d');
+      ctx.strokeStyle = wb.cur.c; ctx.lineWidth = wb.cur.w; ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.moveTo(lx, ly); ctx.lineTo(n[0], n[1]); ctx.stroke();
+      p.push(n[0], n[1]);
+    });
+    const end = () => { if (wb.cur) { wb.cur = null; wbRedraw(); } };
+    c.addEventListener('pointerup', end);
+    c.addEventListener('pointercancel', end);
+
+    $$('#wbColors .wb-swatch').forEach(b => b.addEventListener('click', () => { wb.color = b.dataset.color; wb.erase = false; wbSyncTools(); }));
+    $$('#wbSizes .wb-size').forEach(b => b.addEventListener('click', () => { wb.width = Number(b.dataset.w); wbSyncTools(); }));
+    $('#wbEraser').addEventListener('click', () => { wb.erase = !wb.erase; wbSyncTools(); });
+    $('#wbUndo').addEventListener('click', () => { wb.strokes.pop(); wbRedraw(); });
+    $('#wbClear').addEventListener('click', () => { wb.strokes = []; wbRedraw(); });
+    $('#wbShow').addEventListener('click', () => {
+      const r = hostShareBoard(wb.strokes.map(st => ({ c: st.c, w: st.w, p: st.p.slice() })));
+      if (r === 'empty') toast('Draw something first.');
+      else if (r === 'toolarge') toast('That drawing is too detailed to send. Undo or clear some strokes.');
+      else toast('Shown to the class.');
+    });
+    $('#wbHide').addEventListener('click', () => { hostHideBoard(); toast('Hidden from the class.'); });
+    $('#wbClose').addEventListener('click', closeWb);
+    wbSyncTools();
   }
 
   /* ---------------------------------------------------------
@@ -1407,7 +1712,22 @@
 
     // Question modal
     $('#qSubmit').addEventListener('click', submitAnswer);
-    $('#qInput').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); submitAnswer(); } });
+    document.addEventListener('keydown', e => {
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      const tag = e.target && e.target.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+      if (!canAnswer() || $('#qModal').classList.contains('hidden')) return;
+      if (!$('#wbModal').classList.contains('hidden') || !$('#boardModal').classList.contains('hidden')) return;
+      const k = String(e.key).toLowerCase();
+      const idx = k.length === 1 ? Math.max('abcd'.indexOf(k), '1234'.indexOf(k)) : -1;
+      if (idx >= 0 && idx < S.question.choices.length) selectChoice(idx);
+      else if (e.key === 'Enter' && tag !== 'BUTTON' && qView.choice != null) submitAnswer();
+    });
+    $('#qWhiteboard').addEventListener('click', openWhiteboard);
+    $('#hcWhiteboard').addEventListener('click', openWhiteboard);
+    $('#boardClose').addEventListener('click', closeBoardView);
+    $('#showBoardBtn').addEventListener('click', () => { if (boardData) openBoardView(); });
+    initWhiteboard();
     $('#qSkip').addEventListener('click', () => { if (net.role === 'host') resolveQuestion(); });
     $('#qContinue').addEventListener('click', () => { if (net.role === 'host') hostContinue(); });
 
@@ -1422,6 +1742,8 @@
       if (e.key === 'Escape') {
         if (!$('#pinModal').classList.contains('hidden')) closePin();
         else if (!$('#teacherModal').classList.contains('hidden')) closeTeacher();
+        else if (!$('#wbModal').classList.contains('hidden')) closeWb();
+        else if (!$('#boardModal').classList.contains('hidden')) closeBoardView();
       }
     });
     let corner = [];
@@ -1436,18 +1758,18 @@
     $('#tClose').addEventListener('click', closeTeacher);
     $('#tAddForm').addEventListener('submit', e => {
       e.preventDefault();
-      if (addQuestion($('#tNewQ').value, $('#tNewA').value)) {
-        $('#tNewQ').value = ''; $('#tNewA').value = '';
-        renderTeacher();
-        $('#tNewQ').focus();
-      }
+      const err = addQuestion($('#tNewQ').value, $('#tNewA').value, [$('#tNewW1').value, $('#tNewW2').value, $('#tNewW3').value]);
+      if (err) { toast(err); return; }
+      ['#tNewQ', '#tNewA', '#tNewW1', '#tNewW2', '#tNewW3'].forEach(sel => { $(sel).value = ''; });
+      renderTeacher();
+      $('#tNewQ').focus();
     });
     $('#tBulkBtn').addEventListener('click', bulkAdd);
     $('#tExport').addEventListener('click', exportQuestions);
     $('#tImport').addEventListener('change', e => { importQuestions(e.target.files[0]); e.target.value = ''; });
     $('#tSamples').addEventListener('click', () => {
       if (!window.confirm('Replace all of your questions with the sample questions?')) return;
-      questions = DEFAULT_QUESTIONS.map(([q, a]) => ({ id: uid(), q, a }));
+      questions = sampleQuestions();
       saveQuestions(); renderTeacher();
     });
     $('#tClear').addEventListener('click', () => {

@@ -52,7 +52,7 @@
         <h2>How to play</h2>
         <ol class="how-list">
           <li>Take turns rolling the die and moving around the island.</li>
-          <li>Every space you land on asks a question, and <strong>everyone</strong> answers it.</li>
+          <li>Every space you land on asks a question, and <strong>everyone</strong> picks an answer.</li>
           <li>Item spaces add supplies to the shared life raft.</li>
           <li>Fill all 10 raft slots before the questions run out to escape!</li>
         </ol>
@@ -90,6 +90,7 @@
       <header class="topbar">
         <div class="logo">Escape the Island</div>
         <div class="room-chip">Room <b id="roomChip">----</b></div>
+        <button id="showBoardBtn" class="btn small hidden" type="button">✏️ Teacher's board</button>
         <button id="leaveBtn" class="btn small ghost" type="button">Leave</button>
       </header>
 
@@ -145,6 +146,7 @@
           <div class="card hidden" id="hostControls">
             <h3 class="card-h">Host controls</h3>
             <label class="check"><input type="checkbox" id="hcAutoContinue"> <span>Move on automatically after each question</span></label>
+            <button id="hcWhiteboard" class="btn small palm" type="button">✏️ Open whiteboard</button>
             <button id="restartBtn" class="btn small ghost" type="button">Restart game</button>
           </div>
 
@@ -164,9 +166,10 @@
       <div id="qMeta" class="q-meta"></div>
       <h2 id="qText" class="q-text"></h2>
 
+      <div id="qChoices" class="choices" role="group" aria-label="Answer choices"></div>
       <div id="qAnswerArea" class="q-answer">
-        <input id="qInput" type="text" maxlength="80" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Type your answer here" aria-label="Your answer">
-        <button id="qSubmit" class="btn palm" type="button">Lock in answer</button>
+        <button id="qSubmit" class="btn palm" type="button" disabled>Lock in answer</button>
+        <span class="q-keyhint">Tip: press A, B, C or D</span>
       </div>
       <p id="qWait" class="q-wait hidden"></p>
       <p id="qHostAnswer" class="q-hostanswer hidden"></p>
@@ -174,13 +177,14 @@
 
       <div id="qReveal" class="q-reveal hidden">
         <div id="qVerdict" class="q-verdict"></div>
-        <div class="q-correct">Correct answer: <strong id="qCorrect"></strong></div>
-        <ul id="qResults" class="q-results"></ul>
+        <div id="qCorrect" class="q-correct"></div>
+        <p id="qTeam" class="q-team"></p>
         <div id="qCountdown" class="countdown"><div class="countdown-fill"></div></div>
         <p id="qNextNote" class="q-nextnote"></p>
       </div>
 
       <div class="q-actions">
+        <button id="qWhiteboard" class="btn small ghost hidden" type="button">✏️ Whiteboard</button>
         <button id="qSkip" class="btn small ghost hidden" type="button">Skip waiting</button>
         <button id="qContinue" class="btn palm hidden" type="button">Next turn</button>
       </div>
@@ -237,18 +241,21 @@
       </div>
       <p class="teacher-note">Questions are saved on this device and used when this device hosts a game. Changes apply the next time a game starts.</p>
       <p id="tCount" class="teacher-count"></p>
-      <p class="teacher-note">Answers ignore capital letters and punctuation. Separate alternate answers with <strong>|</strong> (example: <em>6 | six</em>). Small typos are forgiven on longer words.</p>
+      <p class="teacher-note">Students see the correct answer mixed in with your wrong answers, in a random order. Use 1 to 3 wrong answers (so 2 to 4 choices). A true/false question needs just one wrong answer.</p>
 
       <form id="tAddForm" class="t-add" autocomplete="off">
         <input id="tNewQ" type="text" maxlength="200" placeholder="Question" aria-label="New question" required>
-        <input id="tNewA" type="text" maxlength="120" placeholder="Correct answer" aria-label="Correct answer" required>
+        <input id="tNewA" class="t-good" type="text" maxlength="80" placeholder="Correct answer" aria-label="Correct answer" required>
+        <input id="tNewW1" type="text" maxlength="80" placeholder="Wrong answer 1" aria-label="Wrong answer 1" required>
+        <input id="tNewW2" type="text" maxlength="80" placeholder="Wrong answer 2 (optional)" aria-label="Wrong answer 2">
+        <input id="tNewW3" type="text" maxlength="80" placeholder="Wrong answer 3 (optional)" aria-label="Wrong answer 3">
         <button class="btn small palm" type="submit">Add question</button>
       </form>
 
       <details class="t-bulk">
         <summary>Add many at once</summary>
-        <p class="teacher-note">One per line. Put the question and answer on the same line, separated by a tab (paste two spreadsheet columns) or by <strong>=&gt;</strong>.</p>
-        <textarea id="tBulk" rows="5" placeholder="What is 7 x 8? => 56"></textarea>
+        <p class="teacher-note">One question per line. Paste spreadsheet columns in this order: <strong>question, correct answer, wrong 1, wrong 2, wrong 3</strong> (separated by tabs). Or type each line as <strong>question =&gt; correct | wrong 1 | wrong 2 | wrong 3</strong>.</p>
+        <textarea id="tBulk" rows="5" placeholder="What is 7 x 8? => 56 | 54 | 63 | 48"></textarea>
         <button id="tBulkBtn" class="btn small" type="button">Add these questions</button>
       </details>
 
@@ -260,6 +267,59 @@
         <button id="tSamples" class="btn small ghost" type="button">Load sample questions</button>
         <button id="tClear" class="btn small ghost danger" type="button">Delete all</button>
       </div>
+    </div>
+  </div>
+
+  <!-- ============ TEACHER WHITEBOARD ============ -->
+  <div id="wbModal" class="modal modal-mid hidden" role="dialog" aria-modal="true" aria-labelledby="wbTitle">
+    <div class="card wb-card">
+      <div class="wb-head">
+        <h2 id="wbTitle">Whiteboard</h2>
+        <button id="wbClose" class="btn small ghost" type="button">Close</button>
+      </div>
+      <p class="teacher-note">Draw, then press <strong>Show to class</strong> and everyone sees it on their own screen. The game waits while you work. Your drawing disappears when the next turn starts.</p>
+      <div class="wb-layout">
+        <div class="wb-main">
+          <div class="wb-tools">
+            <span id="wbColors" class="wb-group" role="group" aria-label="Pen colors">
+              <button class="wb-swatch active" type="button" data-color="#1d3948" style="background:#1d3948" aria-label="Black pen"></button>
+              <button class="wb-swatch" type="button" data-color="#d64545" style="background:#d64545" aria-label="Red pen"></button>
+              <button class="wb-swatch" type="button" data-color="#2b7fb8" style="background:#2b7fb8" aria-label="Blue pen"></button>
+              <button class="wb-swatch" type="button" data-color="#1f9d55" style="background:#1f9d55" aria-label="Green pen"></button>
+              <button class="wb-swatch" type="button" data-color="#e08a00" style="background:#e08a00" aria-label="Orange pen"></button>
+            </span>
+            <span id="wbSizes" class="wb-group" role="group" aria-label="Pen size">
+              <button class="btn small ghost wb-size" type="button" data-w="3">Thin</button>
+              <button class="btn small ghost wb-size active" type="button" data-w="6">Medium</button>
+              <button class="btn small ghost wb-size" type="button" data-w="14">Thick</button>
+            </span>
+            <button id="wbEraser" class="btn small ghost" type="button" aria-pressed="false">Eraser</button>
+            <button id="wbUndo" class="btn small ghost" type="button">Undo</button>
+            <button id="wbClear" class="btn small ghost danger" type="button">Clear</button>
+          </div>
+          <canvas id="wbCanvas" width="1200" height="720" aria-label="Whiteboard drawing area"></canvas>
+          <div class="wb-actions">
+            <button id="wbShow" class="btn palm" type="button">Show to class</button>
+            <button id="wbHide" class="btn ghost hidden" type="button">Hide from class</button>
+          </div>
+        </div>
+        <aside class="wb-side">
+          <h3 class="card-h">Current question</h3>
+          <div id="wbQ" class="wb-q"></div>
+          <ul id="wbPicks" class="wb-picks"></ul>
+        </aside>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ STUDENT VIEW OF TEACHER'S BOARD ============ -->
+  <div id="boardModal" class="modal modal-mid hidden" role="dialog" aria-modal="true" aria-labelledby="boardTitle">
+    <div class="card board-card">
+      <div class="wb-head">
+        <h2 id="boardTitle">✏️ From your teacher</h2>
+        <button id="boardClose" class="btn small" type="button">Got it</button>
+      </div>
+      <canvas id="boardCanvas" width="1200" height="720" aria-label="Your teacher's drawing"></canvas>
     </div>
   </div>
 
