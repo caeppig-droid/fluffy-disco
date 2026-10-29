@@ -1197,12 +1197,17 @@
      - PIN is checked here in JavaScript only; it never appears in the HTML.
      --------------------------------------------------------- */
   let pinFails = 0;
+  let pinPurpose = 'teacher';   // 'teacher' (open question editor) or 'host' (start a room)
+  let pendingHostName = '';
   let pinLockedUntil = 0;
   let editingId = null;
 
-  function openPin() {
+  function openPin(purpose = 'teacher', hostName = '') {
     if ($('#teacherModal').classList.contains('hidden') === false) return;
     if (!$('#pinModal').classList.contains('hidden')) return;
+    pinPurpose = purpose;
+    pendingHostName = hostName;
+    $('#pinTitle').textContent = purpose === 'host' ? 'Teacher PIN needed to host' : 'Teacher mode';
     const wait = Math.ceil((pinLockedUntil - Date.now()) / 1000);
     $('#pinMsg').textContent = wait > 0 ? 'Too many tries. Wait ' + wait + ' seconds.' : '';
     $('#pinMsg').classList.toggle('error', wait > 0);
@@ -1210,7 +1215,7 @@
     $('#pinModal').classList.remove('hidden');
     setTimeout(() => $('#pinInput').focus(), 30);
   }
-  function closePin() { $('#pinModal').classList.add('hidden'); $('#pinInput').value = ''; }
+  function closePin() { $('#pinModal').classList.add('hidden'); $('#pinInput').value = ''; pinPurpose = 'teacher'; pendingHostName = ''; }
 
   function submitPin() {
     const now = Date.now();
@@ -1221,8 +1226,10 @@
     }
     if ($('#pinInput').value.trim() === TEACHER_PIN) {
       pinFails = 0;
+      const purpose = pinPurpose, name = pendingHostName;
       closePin();
-      openTeacher();
+      if (purpose === 'host') startHosting(name);
+      else openTeacher();
     } else {
       pinFails++;
       $('#pinInput').value = '';
@@ -1376,7 +1383,7 @@
       return n;
     };
 
-    $('#hostBtn').addEventListener('click', () => { const n = readName(); if (n) startHosting(n); });
+    $('#hostBtn').addEventListener('click', () => { const n = readName(); if (n) openPin('host', n); });
     $('#joinBtn').addEventListener('click', () => { const n = readName(); if (n) joinRoom($('#codeInput').value, n); });
     $('#codeInput').addEventListener('input', e => { e.target.value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''); });
     $('#codeInput').addEventListener('keydown', e => { if (e.key === 'Enter') $('#joinBtn').click(); });
