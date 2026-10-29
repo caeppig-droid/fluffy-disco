@@ -77,6 +77,7 @@
         <div id="lobbyHostControls" class="hidden">
           <label class="check"><input type="checkbox" id="optHostPlays" checked> <span>I'm playing too (uncheck if you're only running the game)</span></label>
           <label class="check"><input type="checkbox" id="optAutoContinue" checked> <span>Move on automatically a few seconds after each question</span></label>
+          <label class="select-row"><span>Random events:</span> <select id="optEvents"><option value="off">Off</option><option value="sometimes" selected>Sometimes</option><option value="often">Often</option></select></label>
           <p id="lobbyQCount" class="lobby-qcount"></p>
           <button id="startBtn" class="btn big palm" type="button">Start the adventure</button>
         </div>
@@ -146,6 +147,7 @@
           <div class="card hidden" id="hostControls">
             <h3 class="card-h">Host controls</h3>
             <label class="check"><input type="checkbox" id="hcAutoContinue"> <span>Move on automatically after each question</span></label>
+            <label class="select-row"><span>Random events:</span> <select id="hcEvents"><option value="off">Off</option><option value="sometimes">Sometimes</option><option value="often">Often</option></select></label>
             <button id="hcWhiteboard" class="btn small palm" type="button">✏️ Open whiteboard</button>
             <button id="hcReport" class="btn small ghost" type="button">📊 Class report</button>
             <button id="restartBtn" class="btn small ghost" type="button">Restart game</button>
@@ -347,6 +349,17 @@
         <button id="boardClose" class="btn small" type="button">Got it</button>
       </div>
       <canvas id="boardCanvas" width="1200" height="720" aria-label="Your teacher's drawing"></canvas>
+    </div>
+  </div>
+
+  <!-- ============ RANDOM EVENT SPLASH ============ -->
+  <div id="eventSplash" class="event-splash hidden" role="status" aria-live="polite">
+    <div id="eventCard" class="event-card">
+      <div id="eventEmoji" class="event-emoji" aria-hidden="true"></div>
+      <div>
+        <div id="eventTitle" class="event-title"></div>
+        <p id="eventText" class="event-text"></p>
+      </div>
     </div>
   </div>
 

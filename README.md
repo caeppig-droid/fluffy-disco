@@ -43,6 +43,17 @@ Teacher Mode lets you add, edit, and delete the trivia questions and their answe
 
 While a question is on screen, the host can press **Whiteboard** to doodle an explanation (pen colors, sizes, eraser, undo). Press **Show to class** and the drawing appears on every student's screen. Students can close it and reopen it from a button in the corner. The game pauses its auto-advance while you use the whiteboard, and you press **Next turn** when you are ready. The drawing clears when the next turn starts.
 
+### Random events
+
+To keep games varied, landing on a **blank space** sometimes triggers a surprise that affects the whole team. A short animation plays on every screen, and then the question still appears.
+
+- 🐒 **Monkey business:** a monkey steals the supply the team collected most recently.
+- 🎁 **Lucky day:** a random supply washes up on shore and is added to the raft.
+- ⛈️ **Storm:** 2 questions are lost, so time runs out sooner.
+- 🍾 **Message in a bottle:** 2 questions that were already asked are added back to the pile, which gives the team more time (some questions may repeat).
+
+Events only happen on blank spaces, never on supply spaces. In the lobby (and later in Host controls) choose **Random events: Off, Sometimes, or Often**. Sometimes is the default, about 1 turn in 6. A storm only happens when at least 3 questions are left, and a bottle only when a question has been asked, so events never end the game by themselves.
+
 ### Class report
 
 Every game records each student's answers on the host's device. Open it from **Class report** in Host controls, from **View class report** on the win/lose screen, or from **Last game report** in Teacher Mode. You get on-screen tables (student totals, and for each question the percent correct and the most common wrong answers), plus two downloads that open in Excel or Google Sheets:

@@ -33,6 +33,8 @@
   const STEP_MS = 300;         // time per hop of a token
   const LAND_PAUSE_MS = 600;   // breathing room after landing
   const REVEAL_MS = 7000;      // auto-continue delay after answers are revealed
+  const EVENT_MS = 3600;       // how long a random event is shown before the question
+  const EVENT_CHANCE = { off: 0, sometimes: 0.5, often: 0.8 };   // per landing on a blank space
   const PING_MS = 4000;        // heartbeat interval (both directions)
   const STALE_MS = 20000;      // silence longer than this = treated as disconnected
   const ROOM_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no look-alikes (0/O, 1/I)
@@ -53,6 +55,14 @@
     rope:   { emoji: '🪢', label: 'Rope' },
     food:   { emoji: '🥭', label: 'Mango' },
     medkit: { emoji: '🩹', label: 'Medkit' }
+  };
+
+  // Random events (only on blank spaces). Two help the team, two hurt it.
+  const EVENTS = {
+    monkey: { emoji: '🐒', title: 'Monkey business!', good: false },
+    washup: { emoji: '🎁', title: 'Lucky day!', good: true },
+    storm:  { emoji: '⛈️', title: 'Storm!', good: false },
+    bottle: { emoji: '🍾', title: 'Message in a bottle!', good: true }
   };
 
   const COLORS = ['#e4572e', '#2b7fb8', '#7b4fd8', '#d6336c', '#2f8f4e', '#d98200', '#0f8b8d', '#8d5524'];
@@ -250,6 +260,9 @@
       hostPlays: true,
       peerToPid: {},
       lastSeen: {},
+      events: 'sometimes',       // random events: off | sometimes | often
+      event: null,               // the event being shown right now
+      used: [],                  // questions already asked (a bottle can bring some back)
       board: null,               // whiteboard currently shared with the class
       paused: false,             // teacher is using the whiteboard: no auto-advance
       timer: null
@@ -285,6 +298,8 @@
       hostPlays: H.hostPlays,
       autoContinue: H.autoContinue,
       paused: H.paused,
+      events: H.events,
+      event: H.phase === 'event' ? H.event : null,
       players: H.players.map(p => ({ pid: p.pid, name: p.name, color: p.color, pos: p.pos, connected: p.connected, isHost: p.pid === 'host' })),
       turnPid: cur ? cur.pid : null,
       raft: H.raft.slice(),
@@ -367,6 +382,8 @@
     H.landed = null;
     H.reveal = null;
     H.paused = false;
+    H.used = [];
+    H.event = null;
     H.log = [];
     startReport();
     hostClearBoard();
@@ -381,6 +398,12 @@
     const has = H.players.some(p => p.pid === 'host');
     if (v && !has) H.players.unshift({ pid: 'host', name: H.hostName, color: nextColor(), pos: 0, connected: true });
     if (!v && has) H.players = H.players.filter(p => p.pid !== 'host');
+    broadcast();
+  }
+
+  function hostSetEvents(v) {
+    if (!EVENT_CHANCE.hasOwnProperty(v)) return;
+    H.events = v;
     broadcast();
   }
 
@@ -414,12 +437,66 @@
     H.landed = { pid: p.pid, name: p.name, pos: p.pos, type, gained };
     hostLog(gained ? `${p.name} found ${ITEMS[type].label}! ${ITEMS[type].emoji}` : `${p.name} landed on empty sand.`);
 
+    const evType = type === 'blank' ? pickEvent() : null;
+    if (evType) {
+      H.event = applyEvent(evType);
+      hostLog(H.event.text);
+      H.phase = 'event';
+      broadcast();
+      clearTimeout(H.timer);
+      H.timer = setTimeout(hostAskQuestion, EVENT_MS);
+      return;
+    }
+    hostAskQuestion();
+  }
+
+  // Picks a random event that can actually happen right now, or null.
+  function pickEvent() {
+    if (Math.random() >= (EVENT_CHANCE[H.events] || 0)) return null;
+    const options = ['monkey'];
+    if (H.raft.length < TARGET) options.push('washup');
+    if (H.deck.length >= 3) options.push('storm');      // leaves at least one question to ask
+    if (H.used.length >= 1) options.push('bottle');
+    return options[Math.floor(Math.random() * options.length)];
+  }
+
+  function applyEvent(type) {
+    const meta = EVENTS[type];
+    let text = '';
+    if (type === 'monkey') {
+      if (H.raft.length) {
+        const it = H.raft.pop();     // the supply collected most recently
+        text = 'A monkey grabbed the ' + ITEMS[it].label + ' ' + ITEMS[it].emoji + ' from the raft!';
+      } else text = 'A monkey peeked into the empty raft and ran off with nothing.';
+    } else if (type === 'washup') {
+      const keys = Object.keys(ITEMS);
+      const it = keys[Math.floor(Math.random() * keys.length)];
+      H.raft.push(it);
+      text = 'While the crew took a break, a ' + ITEMS[it].label + ' ' + ITEMS[it].emoji + ' washed up on shore!';
+    } else if (type === 'storm') {
+      H.deck.splice(-2, 2);          // two questions are lost, so time runs out sooner
+      text = 'A storm rolled in! Time is slipping away: 2 fewer questions left.';
+    } else if (type === 'bottle') {
+      let k = 0;
+      while (k < 2 && H.used.length) {
+        const q = H.used.splice(Math.floor(Math.random() * H.used.length), 1)[0];
+        H.deck.splice(Math.floor(Math.random() * (H.deck.length + 1)), 0, q);
+        k++;
+      }
+      text = 'You found extra time: ' + k + ' question' + (k === 1 ? '' : 's') + ' added back to the pile.';
+    }
+    return { id: H.roll.seq, type, emoji: meta.emoji, title: meta.title, good: meta.good, text };
+  }
+
+  function hostAskQuestion() {
+    if (H.phase !== 'moving' && H.phase !== 'event') return;
     const q = H.deck.pop();
     if (!q) { // safety net: cannot happen when the game starts with >= 1 question
       H.phase = H.raft.length >= TARGET ? 'won' : 'lost';
       broadcast();
       return;
     }
+    H.used.push(q);
     // Mix the correct answer in with the wrong ones. One shuffle per question, so
     // every student sees the same order (handy when you talk it through).
     const opts = shuffle([{ t: q.a, ok: true }].concat(q.wrong.map(t => ({ t, ok: false }))));
@@ -859,6 +936,7 @@
   let S_extra = {};
   let seenSeq = -1;
   let lastRaftLen = 0;
+  let lastRaftArr = [];
   let rattling = false;
   const displayPos = {};        // pid -> space index currently drawn
   const animating = {};         // pid -> true while hopping
@@ -879,6 +957,7 @@
     showScreen('game');
     if (!prev || prev.phase === 'lobby') {
       lastRaftLen = 0;
+      lastRaftArr = [];
       Object.keys(displayPos).forEach(k => delete displayPos[k]);
     }
     renderGame(prev, first);
@@ -906,6 +985,7 @@
     if (isHost) {
       $('#optHostPlays').checked = S.hostPlays;
       $('#optAutoContinue').checked = S.autoContinue;
+      $('#optEvents').value = S.events;
       const qc = $('#lobbyQCount');
       qc.textContent = S.qCount + ' question' + (S.qCount === 1 ? '' : 's') + ' ready.' +
         (S.qSkipped ? ' ' + S.qSkipped + ' skipped: they need a wrong answer (open Teacher Mode).' : '') +
@@ -1052,6 +1132,7 @@
     renderTokens();
     renderBoardHighlight();
     renderRaft(first);
+    renderEvent();
     renderPanel();
     renderQuestion();
     renderEnd(prev);
@@ -1059,20 +1140,37 @@
     updateBoardBtn();
   }
 
+  let eventKey = null;
+  function renderEvent() {
+    const sp = $('#eventSplash');
+    const ev = S.phase === 'event' ? S.event : null;
+    if (!ev) { sp.classList.add('hidden'); eventKey = null; return; }
+    sp.classList.remove('hidden');
+    if (eventKey !== ev.id) {
+      eventKey = ev.id;
+      const card = $('#eventCard');
+      card.className = 'event-card ' + (ev.good ? 'good' : 'bad');
+      void card.offsetWidth;
+      $('#eventEmoji').textContent = ev.emoji;
+      $('#eventTitle').textContent = ev.title;
+      $('#eventText').textContent = ev.text;
+    }
+  }
+
   function renderBoardHighlight() {
     const landedPos = (S.phase === 'question' || S.phase === 'reveal') && S.landed ? S.landed.pos : -1;
     $$('#spaces .space').forEach(sp => sp.classList.toggle('landed', Number(sp.dataset.i) === landedPos));
   }
 
-  function floatText(text) {
-    const f = el('div', 'floatgain', text);
+  function floatText(text, bad) {
+    const f = el('div', 'floatgain' + (bad ? ' bad' : ''), text);
     $('#board').append(f);
     setTimeout(() => f.remove(), 2000);
   }
 
   function renderRaft(first) {
     const len = S.raft.length;
-    if (len < lastRaftLen) lastRaftLen = 0;
+    const prevLen = lastRaftLen;
     $$('#raftSlots .slot').forEach((sl, i) => {
       const it = S.raft[i];
       if (it) {
@@ -1080,7 +1178,7 @@
           sl.dataset.item = it;
           sl.textContent = ITEMS[it].emoji;
           sl.className = 'slot filled';
-          if (!first && i >= lastRaftLen) { void sl.offsetWidth; sl.classList.add('pop'); }
+          if (!first && i >= prevLen) { void sl.offsetWidth; sl.classList.add('pop'); }
         }
       } else if (sl.dataset.item) {
         delete sl.dataset.item;
@@ -1088,11 +1186,15 @@
         sl.className = 'slot';
       }
     });
-    if (!first && len > lastRaftLen) {
+    if (!first && len > prevLen) {
       const it = S.raft[len - 1];
       floatText('+1 ' + ITEMS[it].emoji + ' ' + ITEMS[it].label + '!');
+    } else if (!first && len < prevLen && S.phase === 'event' && S.event && S.event.type === 'monkey') {
+      const gone = lastRaftArr[prevLen - 1];
+      if (gone) floatText('-1 ' + ITEMS[gone].emoji + ' ' + ITEMS[gone].label, true);
     }
     lastRaftLen = len;
+    lastRaftArr = S.raft.slice();
 
     $('#raft').style.setProperty('--p', String(Math.min(1, len / TARGET)));
     $('#raftCount').textContent = String(len);
@@ -1113,6 +1215,7 @@
     switch (S.phase) {
       case 'roll': text = mine ? 'Your turn! Roll the die.' : (cur ? cur.name + "'s turn to roll…" : 'Waiting for players…'); break;
       case 'moving': text = (cur ? cur.name : 'Someone') + ' is on the move…'; break;
+      case 'event': text = 'Something happened on the island!'; break;
       case 'question': text = 'Everyone answers the question!'; break;
       case 'reveal': text = 'Checking answers…'; break;
       case 'won': text = 'You escaped!'; break;
@@ -1159,7 +1262,7 @@
 
     // Host controls
     $('#hostControls').classList.toggle('hidden', !isHost);
-    if (isHost) $('#hcAutoContinue').checked = S.autoContinue;
+    if (isHost) { $('#hcAutoContinue').checked = S.autoContinue; $('#hcEvents').value = S.events; }
   }
 
   /* ----- Question / reveal modal ----- */
@@ -1836,6 +1939,8 @@
     $('#startBtn').addEventListener('click', () => { if (net.role === 'host') hostStart(); });
     $('#optHostPlays').addEventListener('change', e => { if (net.role === 'host') hostSetHostPlays(e.target.checked); });
     $('#optAutoContinue').addEventListener('change', e => { if (net.role === 'host') { H.autoContinue = e.target.checked; broadcast(); } });
+    $('#optEvents').addEventListener('change', e => { if (net.role === 'host') hostSetEvents(e.target.value); });
+    $('#hcEvents').addEventListener('change', e => { if (net.role === 'host') hostSetEvents(e.target.value); });
     $('#lobbyLeaveBtn').addEventListener('click', leaveGame);
 
     // Game
