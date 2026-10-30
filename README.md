@@ -1,6 +1,6 @@
 # Escape the Island
 
-A cooperative classroom game for the web. A shipwrecked crew moves around a looping island board, answers a question every time someone lands on a space, and collects supplies for a shared life raft. Fill all 10 raft slots before the questions run out to escape.
+A cooperative classroom game for the web. A shipwrecked crew moves around a looping island board, answers a question every time someone lands on a space, and collects supplies for a shared life raft. Fill every slot on the raft (10 supplies is standard) before the questions run out to escape.
 
 It runs entirely in the browser with no backend or database. Players connect directly to each other using [PeerJS](https://peerjs.com/).
 
@@ -12,7 +12,7 @@ It runs entirely in the browser with no backend or database. Players connect dir
 4. On your turn, roll the die and move around the island.
 5. Every landing asks a multiple-choice question, and **every player** picks an answer (A, B, C or D) and locks it in. The next turn unlocks once everyone has answered.
 6. Item spaces (wood, rope, mango, medkit) add to the shared raft.
-7. **Win:** fill all 10 raft slots. **Lose:** the questions run out first.
+7. **Win:** fill every raft slot. **Lose:** the questions run out first.
 
 Students only see their own result. They never see what their classmates picked. The host sees who picked what, so you can talk it through with the class.
 
@@ -25,6 +25,7 @@ The host's browser keeps the game state, so if the host closes their tab the gam
 | `index.html` | Page structure |
 | `style.css` | Island theme and layout |
 | `script.js` | Game logic, PeerJS networking, and Teacher Mode |
+| `question-set-template.xlsx` | Optional spreadsheet for writing question sets (not part of the game itself) |
 
 Keep all three files at the top level of the repository, and keep `index.html` named exactly that.
 
@@ -37,11 +38,37 @@ Teacher Mode lets you add, edit, and delete the trivia questions and their answe
 - **Where questions live:** they are saved in that device's browser (`localStorage`), and the game uses the questions on the device that hosts. Use **Export file** and **Import file** to move them between devices.
 - **Multiple choice:** each question has one correct answer and 1 to 3 wrong answers (2 to 4 choices). The correct answer is mixed in at random, and every student sees the same order.
 - **Bulk add:** one question per line. Paste spreadsheet columns in the order question, correct answer, wrong 1, wrong 2, wrong 3 (tab-separated), or type `Question => correct | wrong 1 | wrong 2 | wrong 3`.
+- **Question set template:** `question-set-template.xlsx` is a spreadsheet for writing many questions at once. Fill in the yellow cells (column F checks each row), then download the **Questions** tab as a CSV file (Google Sheets: File > Download > Comma Separated Values; Excel: File > Save As > CSV UTF-8). In Teacher Mode, click **Import file** and choose the CSV. The questions are added to the set that is open, and rows that are not marked OK are skipped. **Import file** also accepts the `.json` files made by **Export file**.
 - **How many:** 20 to 30 questions makes a fair game. The raft takes about 16 landings to fill on average.
+
+### Question sets
+
+You can keep more than one set of questions, for example an easier and a harder version for different groups.
+
+- In Teacher Mode, use the **Question set** menu at the top to switch sets, and **New set**, **Rename**, **Duplicate** and **Delete set** to manage them. Everything you add, edit, import or export applies to the set that is open.
+- **Duplicate** is the quickest way to make a differentiated version: copy a set, then edit the copy.
+- When you host, a **Question set** menu appears in the lobby if you have more than one set. Pick the set for that group. Each room uses its own set, so several groups can play at the same time with different questions.
+- After a game, the host can pick the question set (and the number of supplies) for the next game on the win/lose screen before pressing Play again. The same choices are in Host controls.
+- The class report shows which set was used.
+
+Your existing questions move into a first set called "My questions" automatically. If you only ever use one set, nothing looks different.
 
 ### Whiteboard
 
 While a question is on screen, the host can press **Whiteboard** to doodle an explanation (pen colors, sizes, eraser, undo). Press **Show to class** and the drawing appears on every student's screen. Students can close it and reopen it from a button in the corner. The game pauses its auto-advance while you use the whiteboard, and you press **Next turn** when you are ready. The drawing clears when the next turn starts.
+
+### Game length: supplies needed
+
+In the lobby, the host chooses **Supplies needed**: **6** (short game), **8**, **10** (standard, the default) or **12** (long game). The raft shows that many slots, and the team wins when it is full. A smaller raft means a shorter game and needs fewer questions.
+
+| Supplies needed | Questions a set needs for a fair game |
+| --- | --- |
+| 6 | about 14 or more |
+| 8 | about 18 or more |
+| 10 | about 22 or more |
+| 12 | about 26 or more |
+
+These numbers give the team roughly a 9 in 10 chance of finishing. The lobby shows a gentle warning when a set is smaller than that, but you can still play. The choice applies to the next game, and you can change it on the win/lose screen or in Host controls before pressing Play again.
 
 ### Random events
 
@@ -52,7 +79,7 @@ To keep games varied, landing on a **blank space** sometimes triggers a surprise
 - ⛈️ **Storm:** 2 questions are lost, so time runs out sooner.
 - 🍾 **Message in a bottle:** 2 questions that were already asked are added back to the pile, which gives the team more time (some questions may repeat).
 
-Events only happen on blank spaces, never on supply spaces. In the lobby (and later in Host controls) choose **Random events: Off, Sometimes, or Often**. Sometimes is the default, about 1 turn in 6. A storm only happens when at least 3 questions are left, and a bottle only when a question has been asked, so events never end the game by themselves.
+Events are drawn so that all four kinds come up once before any kind repeats. Events only happen on blank spaces, never on supply spaces. In the lobby (and later in Host controls) choose **Random events: Off, Sometimes, or Often**. Sometimes is the default, about 1 turn in 6. A storm only happens when at least 3 questions are left, and a bottle only when a question has been asked, so events never end the game by themselves.
 
 ### Class report
 

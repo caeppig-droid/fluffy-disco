@@ -502,3 +502,16 @@ select { font: inherit; color: var(--ink); background: #fff; border: 2px solid #
 @keyframes eventin { from { opacity: 0; transform: translateY(40px) scale(.8); } to { opacity: 1; transform: none; } }
 @keyframes wobble { 0%, 100% { transform: rotate(-14deg); } 50% { transform: rotate(14deg); } }
 @keyframes hop { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-16px); } }
+
+/* Question sets */
+.t-sets { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+
+/* Raft size (6, 8, 10 or 12 supplies) */
+.deck { width: max-content; max-width: 100%; margin: 0 auto; grid-template-columns: repeat(var(--cols, 5), var(--slot, 6.6cqw)); justify-content: center; }
+.deck[data-n="6"] { --cols: 3; }
+.deck[data-n="8"] { --cols: 4; }
+.deck[data-n="10"] { --cols: 5; }
+.deck[data-n="12"] { --cols: 6; --slot: 5.4cqw; gap: .8cqw; }
+.deck[data-n="12"] .slot { font-size: 11px; font-size: 3cqw; }
+
+.end-opts { display: flex; flex-direction: column; gap: 8px; align-items: center; }

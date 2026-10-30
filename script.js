@@ -22,12 +22,16 @@
   const PEER_PREFIX = 'escape-island-v1-';
   const STORE_Q = 'escapeIsland.questions.v2';
   const STORE_Q_OLD = 'escapeIsland.questions.v1';
+  const STORE_SETS = 'escapeIsland.sets.v1';
   const STORE_NAME = 'escapeIsland.name';
   const STORE_REPORT = 'escapeIsland.report.v1';
   const SESS_TOKEN = 'escapeIsland.token';
   const SESS_ROOM = 'escapeIsland.room';
 
-  const TARGET = 10;           // supplies needed to launch the raft
+  const TARGET_OPTIONS = [6, 8, 10, 12];   // supplies needed to launch the raft (teacher's choice)
+  const DEFAULT_TARGET = 10;
+  // Questions a set needs for roughly a 90% chance the team can finish (found by simulation).
+  const QUESTIONS_FOR = { 6: 14, 8: 18, 10: 22, 12: 26 };
   const MAX_PLAYERS = 8;
   const DICE_MS = 1000;        // die rattle time
   const STEP_MS = 300;         // time per hop of a token
@@ -174,25 +178,27 @@
     return { q: { id: id || uid(), q, a, wrong: wrong.slice(0, 3) } };
   }
 
-  function loadQuestions() {
+  /* ----- Question sets -----
+     Stored as { v, sets: [{ id, name, questions }], editId, gameId }.
+     `questions` (above) always holds the set currently open in Teacher Mode.
+     The older single-list storage keys are never changed, so rolling back is safe. */
+  const normalizeQuestions = (arr) => arr
+    .filter(x => x && typeof x.q === 'string' && typeof x.a === 'string' && x.q.trim() && x.a.trim())
+    .map(x => ({
+      id: x.id || uid(), q: x.q.trim(), a: x.a.trim(),
+      wrong: Array.isArray(x.wrong) ? x.wrong.map(w => cleanText(w, 80)).filter(Boolean).slice(0, 3) : []
+    }));
+
+  // The questions you had before sets existed (or the samples on a brand new device).
+  function legacyQuestions() {
     const raw = local.get(STORE_Q);
     if (raw !== null) {
       try {
         const arr = JSON.parse(raw);
-        if (Array.isArray(arr)) {
-          questions = arr
-            .filter(x => x && typeof x.q === 'string' && typeof x.a === 'string' && x.q.trim() && x.a.trim())
-            .map(x => ({
-              id: x.id || uid(), q: x.q.trim(), a: x.a.trim(),
-              wrong: Array.isArray(x.wrong) ? x.wrong.map(w => cleanText(w, 80)).filter(Boolean).slice(0, 3) : []
-            }));
-          return;
-        }
-      } catch (e) { /* fall through to samples */ }
+        if (Array.isArray(arr)) return normalizeQuestions(arr);
+      } catch (e) { /* fall through */ }
     }
-    // First run of this version: start with the samples, and carry over any questions
-    // you typed in the older typed-answer version (they will be flagged as needing wrong answers).
-    questions = sampleQuestions();
+    const out = sampleQuestions();
     const old = local.get(STORE_Q_OLD);
     if (old) {
       try {
@@ -200,14 +206,68 @@
         JSON.parse(old).forEach(o => {
           if (o && typeof o.q === 'string' && typeof o.a === 'string' && !sampleTexts.has(o.q.trim())) {
             const a = cleanText(String(o.a).split('|')[0], 80);
-            if (o.q.trim() && a) questions.push({ id: uid(), q: o.q.trim(), a, wrong: [] });
+            if (o.q.trim() && a) out.push({ id: uid(), q: o.q.trim(), a, wrong: [] });
           }
         });
       } catch (e) { /* ignore */ }
     }
-    saveQuestions();
+    return out;
   }
-  function saveQuestions() { local.set(STORE_Q, JSON.stringify(questions)); }
+
+  function writeSets(d) { local.set(STORE_SETS, JSON.stringify(d)); }
+
+  // Always reads fresh from storage. The first time, your existing questions become the set "My questions".
+  function readSets() {
+    try {
+      const raw = local.get(STORE_SETS);
+      if (raw) {
+        const d = JSON.parse(raw);
+        if (d && Array.isArray(d.sets)) {
+          d.sets = d.sets.filter(x => x && x.id).map(x => ({
+            id: String(x.id), name: cleanText(x.name, 40) || 'Question set',
+            questions: normalizeQuestions(Array.isArray(x.questions) ? x.questions : [])
+          }));
+          if (d.sets.length) {
+            if (!d.sets.some(x => x.id === d.gameId)) d.gameId = d.sets[0].id;
+            if (!d.sets.some(x => x.id === d.editId)) d.editId = d.sets[0].id;
+            return d;
+          }
+        }
+      }
+    } catch (e) { /* fall through to first-run setup */ }
+    const first = { id: uid(6), name: 'My questions', questions: legacyQuestions() };
+    const d = { v: 1, sets: [first], editId: first.id, gameId: first.id };
+    writeSets(d);
+    return d;
+  }
+
+  let editSetId = null;
+  let editSetName = '';
+
+  function loadQuestions() {
+    const d = readSets();
+    const es = d.sets.find(x => x.id === editSetId) || d.sets.find(x => x.id === d.editId) || d.sets[0];
+    editSetId = es.id;
+    editSetName = es.name;
+    questions = es.questions;
+  }
+  function saveQuestions() {
+    const d = readSets();
+    const es = d.sets.find(x => x.id === editSetId);
+    if (!es) return;
+    es.questions = questions;
+    d.editId = editSetId;
+    writeSets(d);
+  }
+
+  const setsSummary = () => readSets().sets.map(x => ({
+    id: x.id, name: x.name, ready: x.questions.filter(q => q.wrong.length >= 1).length, total: x.questions.length
+  }));
+  // The set the host will use for the next game.
+  function chosenSet() {
+    const d = readSets();
+    return d.sets.find(x => x.id === (H && H.setId)) || d.sets.find(x => x.id === d.gameId) || d.sets[0];
+  }
 
   /* ---------------------------------------------------------
      NETWORK STATE
@@ -260,9 +320,14 @@
       hostPlays: true,
       peerToPid: {},
       lastSeen: {},
+      target: DEFAULT_TARGET,    // supplies needed in the game being played
+      nextTarget: DEFAULT_TARGET,// supplies needed for the next game (set in the lobby / Host controls)
+      setId: null,               // question set chosen for this room
       events: 'sometimes',       // random events: off | sometimes | often
       event: null,               // the event being shown right now
       used: [],                  // questions already asked (a bottle can bring some back)
+      eventBag: [],              // shuffled event types still to come before any repeats
+      lastEvent: null,           // the previous event, so the same one never happens twice in a row
       board: null,               // whiteboard currently shared with the class
       paused: false,             // teacher is using the whiteboard: no auto-advance
       timer: null
@@ -289,7 +354,8 @@
   function snapshot() {
     const inQ = (H.phase === 'question' || H.phase === 'reveal') && H.current;
     const cur = currentPlayer();
-    const ready = playable().length;
+    const gs = chosenSet();
+    const ready = gs.questions.filter(q => q.wrong.length >= 1).length;
     return {
       rev: H.rev,
       phase: H.phase,
@@ -303,12 +369,13 @@
       players: H.players.map(p => ({ pid: p.pid, name: p.name, color: p.color, pos: p.pos, connected: p.connected, isHost: p.pid === 'host' })),
       turnPid: cur ? cur.pid : null,
       raft: H.raft.slice(),
-      target: TARGET,
+      target: H.target,
+      nextTarget: H.nextTarget,
       roll: { seq: H.roll.seq, value: H.roll.value, pid: H.roll.pid },
       deckLeft: H.deck.length,
       totalQ: H.totalQ,
       qCount: ready,
-      qSkipped: questions.length - ready,
+      qSkipped: gs.questions.length - ready,
       question: inQ ? { id: H.current.id, num: H.asked, text: H.current.q, choices: H.current.choices.slice() } : null,
       answered: Object.keys(H.answers),            // who has answered, not what they picked
       landed: H.landed,
@@ -330,7 +397,7 @@
 
   // Extra data only the host's own screen gets.
   function hostExtra() {
-    const extra = {};
+    const extra = { sets: setsSummary(), setId: chosenSet().id };
     if (H.current && (H.phase === 'question' || H.phase === 'reveal')) {
       extra.picks = Object.assign({}, H.answers);          // pid -> choice index
       if (H.phase === 'question' && !H.players.some(p => p.pid === 'host')) extra.correctIdx = H.current.correctIdx;
@@ -364,12 +431,14 @@
   }
 
   function hostStart() {
-    loadQuestions();
-    const ready = playable();
-    if (!ready.length) { toast('Add at least one question with answer choices in Teacher Mode first.'); return; }
+    const cs = chosenSet();
+    const ready = cs.questions.filter(q => q.wrong.length >= 1);
+    if (!ready.length) { toast('The set "' + cs.name + '" has no questions with answer choices yet. Add some in Teacher Mode.'); return; }
+    H.setId = cs.id;
     if (!H.players.some(p => p.connected)) { toast('Wait for at least one player to join.'); return; }
 
     clearTimeout(H.timer);
+    H.target = H.nextTarget;
     H.deck = shuffle(ready.map(q => ({ id: uid(), q: q.q, a: q.a, wrong: q.wrong.slice() })));
     H.totalQ = H.deck.length;
     H.asked = 0;
@@ -383,9 +452,11 @@
     H.reveal = null;
     H.paused = false;
     H.used = [];
+    H.eventBag = shuffle(Object.keys(EVENTS));
+    H.lastEvent = null;
     H.event = null;
     H.log = [];
-    startReport();
+    startReport(cs.name);
     hostClearBoard();
     H.phase = 'roll';
     hostLog('The crew washes ashore. Find supplies and build a raft!');
@@ -398,6 +469,22 @@
     const has = H.players.some(p => p.pid === 'host');
     if (v && !has) H.players.unshift({ pid: 'host', name: H.hostName, color: nextColor(), pos: 0, connected: true });
     if (!v && has) H.players = H.players.filter(p => p.pid !== 'host');
+    broadcast();
+  }
+
+  function hostSetQuestionSet(id) {
+    const d = readSets();
+    if (!d.sets.some(x => x.id === id)) return;
+    H.setId = id;
+    d.gameId = id;
+    writeSets(d);
+    broadcast();
+  }
+
+  function hostSetTarget(v) {
+    v = Number(v);
+    if (!TARGET_OPTIONS.includes(v)) return;
+    H.nextTarget = v;
     broadcast();
   }
 
@@ -433,7 +520,7 @@
     const type = BOARD[p.pos];
 
     let gained = false;
-    if (ITEMS[type] && H.raft.length < TARGET) { H.raft.push(type); gained = true; }
+    if (ITEMS[type] && H.raft.length < H.target) { H.raft.push(type); gained = true; }
     H.landed = { pid: p.pid, name: p.name, pos: p.pos, type, gained };
     hostLog(gained ? `${p.name} found ${ITEMS[type].label}! ${ITEMS[type].emoji}` : `${p.name} landed on empty sand.`);
 
@@ -450,14 +537,22 @@
     hostAskQuestion();
   }
 
-  // Picks a random event that can actually happen right now, or null.
+  // Picks an event that can actually happen right now, or null. Events come from a shuffled
+  // "bag", so every kind shows up once before any kind repeats (no streaks of the same event).
   function pickEvent() {
     if (Math.random() >= (EVENT_CHANCE[H.events] || 0)) return null;
-    const options = ['monkey'];
-    if (H.raft.length < TARGET) options.push('washup');
-    if (H.deck.length >= 3) options.push('storm');      // leaves at least one question to ask
-    if (H.used.length >= 1) options.push('bottle');
-    return options[Math.floor(Math.random() * options.length)];
+    const ok = {
+      monkey: true,
+      washup: H.raft.length < H.target,
+      storm: H.deck.length >= 3,          // leaves at least one question to ask
+      bottle: H.used.length >= 1
+    };
+    let pick = H.eventBag.find(t => ok[t] && t !== H.lastEvent);
+    if (!pick) pick = H.eventBag.find(t => ok[t]);
+    if (!pick) { H.eventBag = shuffle(Object.keys(EVENTS)); pick = H.eventBag.find(t => ok[t] && t !== H.lastEvent) || H.eventBag.find(t => ok[t]); }
+    H.eventBag.splice(H.eventBag.indexOf(pick), 1);
+    H.lastEvent = pick;
+    return pick;
   }
 
   function applyEvent(type) {
@@ -492,7 +587,7 @@
     if (H.phase !== 'moving' && H.phase !== 'event') return;
     const q = H.deck.pop();
     if (!q) { // safety net: cannot happen when the game starts with >= 1 question
-      H.phase = H.raft.length >= TARGET ? 'won' : 'lost';
+      H.phase = H.raft.length >= H.target ? 'won' : 'lost';
       broadcast();
       return;
     }
@@ -549,7 +644,7 @@
     clearTimeout(H.timer);
     H.paused = false;
     hostClearBoard();
-    if (H.raft.length >= TARGET) {
+    if (H.raft.length >= H.target) {
       H.phase = 'won';
       hostLog('The raft is ready. You escaped!');
     } else if (H.deck.length === 0) {
@@ -746,6 +841,7 @@
         net.code = code;
         net.me = { pid: 'host', name };
         initHostState(name);
+        H.setId = readSets().gameId;
         setBusy(false);
         homeMsg('');
         session.set(SESS_ROOM, code);
@@ -963,6 +1059,20 @@
     renderGame(prev, first);
   }
 
+  // The question-set dropdown only appears when there is more than one set.
+  function fillSetSelect(sel, row) {
+    const sets = S_extra.sets || [];
+    row.classList.toggle('hidden', sets.length < 2);
+    if (sets.length < 2 || document.activeElement === sel) return;
+    sel.replaceChildren();
+    sets.forEach(x => {
+      const o = el('option', '', x.name + ' (' + x.ready + ' question' + (x.ready === 1 ? '' : 's') + ')');
+      o.value = x.id;
+      sel.append(o);
+    });
+    sel.value = S_extra.setId;
+  }
+
   /* ----- Lobby ----- */
   function renderLobby() {
     const isHost = net.role === 'host';
@@ -985,12 +1095,14 @@
     if (isHost) {
       $('#optHostPlays').checked = S.hostPlays;
       $('#optAutoContinue').checked = S.autoContinue;
+      $('#optTarget').value = String(S.nextTarget);
       $('#optEvents').value = S.events;
+      fillSetSelect($('#optSet'), $('#optSetRow'));
       const qc = $('#lobbyQCount');
       qc.textContent = S.qCount + ' question' + (S.qCount === 1 ? '' : 's') + ' ready.' +
         (S.qSkipped ? ' ' + S.qSkipped + ' skipped: they need a wrong answer (open Teacher Mode).' : '') +
-        (S.qCount < 20 ? ' Add more in Teacher Mode (about 20+ makes the raft winnable).' : '');
-      qc.classList.toggle('warn', S.qCount < 20 || S.qSkipped > 0);
+        (S.qCount < QUESTIONS_FOR[S.nextTarget] ? ' A ' + S.nextTarget + '-supply raft works best with ' + QUESTIONS_FOR[S.nextTarget] + ' or more questions. Add more in Teacher Mode, or choose a smaller raft.' : '');
+      qc.classList.toggle('warn', S.qCount < QUESTIONS_FOR[S.nextTarget] || S.qSkipped > 0);
       $('#startBtn').disabled = !S.players.some(p => p.connected);
     }
   }
@@ -1017,9 +1129,7 @@
       host.append(d);
     });
 
-    const slots = $('#raftSlots');
-    slots.replaceChildren();
-    for (let i = 0; i < TARGET; i++) slots.append(el('div', 'slot'));
+    buildRaftSlots(DEFAULT_TARGET);
 
     const sc = $('#supplyCounts');
     sc.replaceChildren();
@@ -1034,6 +1144,16 @@
     die.replaceChildren();
     for (let i = 0; i < 9; i++) die.append(document.createElement('i'));
     setDie(6);
+  }
+
+  function buildRaftSlots(n) {
+    const slots = $('#raftSlots');
+    slots.replaceChildren();
+    for (let i = 0; i < n; i++) slots.append(el('div', 'slot'));
+    slots.dataset.n = String(n);
+    $('#raftTotal').textContent = String(n);
+    lastRaftLen = 0;
+    lastRaftArr = [];
   }
 
   /* ----- Die ----- */
@@ -1169,6 +1289,7 @@
   }
 
   function renderRaft(first) {
+    if ($$('#raftSlots .slot').length !== S.target) buildRaftSlots(S.target);
     const len = S.raft.length;
     const prevLen = lastRaftLen;
     $$('#raftSlots .slot').forEach((sl, i) => {
@@ -1196,7 +1317,7 @@
     lastRaftLen = len;
     lastRaftArr = S.raft.slice();
 
-    $('#raft').style.setProperty('--p', String(Math.min(1, len / TARGET)));
+    $('#raft').style.setProperty('--p', String(Math.min(1, len / S.target)));
     $('#raftCount').textContent = String(len);
 
     const counts = {};
@@ -1262,7 +1383,7 @@
 
     // Host controls
     $('#hostControls').classList.toggle('hidden', !isHost);
-    if (isHost) { $('#hcAutoContinue').checked = S.autoContinue; $('#hcEvents').value = S.events; }
+    if (isHost) { $('#hcAutoContinue').checked = S.autoContinue; $('#hcEvents').value = S.events; $('#hcTarget').value = String(S.nextTarget); fillSetSelect($('#hcSet'), $('#hcSetRow')); }
   }
 
   /* ----- Question / reveal modal ----- */
@@ -1433,7 +1554,7 @@
   /* ----- End screens ----- */
   function renderEnd(prev) {
     const m = $('#endModal');
-    if (S.phase !== 'won' && S.phase !== 'lost') { m.classList.add('hidden'); return; }
+    if (S.phase !== 'won' && S.phase !== 'lost') { m.classList.add('hidden'); $('#confetti').replaceChildren(); return; }
     m.classList.remove('hidden');
     m.dataset.result = S.phase;
     const won = S.phase === 'won';
@@ -1445,6 +1566,8 @@
     $('#endStats').textContent = S.raft.length + ' of ' + S.target + ' supplies collected · ' + (S.totalQ - S.deckLeft) + ' of ' + S.totalQ + ' questions used';
     const isHost = net.role === 'host';
     $('#playAgainBtn').classList.toggle('hidden', !isHost);
+    $('#endHostOpts').classList.toggle('hidden', !isHost);
+    if (isHost) { $('#endTarget').value = String(S.nextTarget); fillSetSelect($('#endSet'), $('#endSetRow')); }
     $('#endReportBtn').classList.toggle('hidden', !isHost);
     $('#endWaiting').classList.toggle('hidden', isHost);
     if (won && (!prev || prev.phase !== 'won')) launchConfetti();
@@ -1527,18 +1650,93 @@
     else if (S && S.phase === 'lobby') renderLobby();
     updateLobbyCountFromStorage();
   }
-  function updateLobbyCountFromStorage() {
-    if (net.role === 'host' && S && S.phase === 'lobby') { S.qCount = playable().length; S.qSkipped = questions.length - S.qCount; renderLobby(); }
+  function updateLobbyCountFromStorage() { /* the lobby count comes from the chosen set, refreshed by broadcast() */ }
+
+  function renderSetPicker() {
+    const d = readSets();
+    const sel = $('#tSet');
+    sel.replaceChildren();
+    d.sets.forEach(x => {
+      const o = el('option', '', x.name + ' (' + x.questions.length + ')');
+      o.value = x.id;
+      sel.append(o);
+    });
+    sel.value = editSetId;
+    $('#tSetDelete').disabled = d.sets.length < 2;
+  }
+
+  function newSet() {
+    const name = window.prompt('Name your new question set (for example, Magnets and Maps):');
+    if (name === null) return;
+    const n = cleanText(name, 40);
+    if (!n) { toast('Type a name for the set.'); return; }
+    const d = readSets();
+    if (d.sets.some(x => x.name.toLowerCase() === n.toLowerCase())) { toast('You already have a set with that name.'); return; }
+    const created = { id: uid(6), name: n, questions: [] };
+    d.sets.push(created);
+    writeSets(d);
+    editSetId = created.id;
+    loadQuestions();
+    editingId = null;
+    renderTeacher();
+  }
+
+  function renameSet() {
+    const name = window.prompt('New name for this set:', editSetName);
+    if (name === null) return;
+    const n = cleanText(name, 40);
+    if (!n) { toast('Type a name for the set.'); return; }
+    const d = readSets();
+    if (d.sets.some(x => x.id !== editSetId && x.name.toLowerCase() === n.toLowerCase())) { toast('You already have a set with that name.'); return; }
+    const es = d.sets.find(x => x.id === editSetId);
+    if (!es) return;
+    es.name = n;
+    writeSets(d);
+    loadQuestions();
+    renderTeacher();
+  }
+
+  function duplicateSet() {
+    const d = readSets();
+    const src = d.sets.find(x => x.id === editSetId);
+    if (!src) return;
+    let n = cleanText(src.name, 32) + ' (copy)', i = 2;
+    while (d.sets.some(x => x.name.toLowerCase() === n.toLowerCase())) n = cleanText(src.name, 30) + ' (copy ' + (i++) + ')';
+    const copy = { id: uid(6), name: n, questions: src.questions.map(q => ({ id: uid(), q: q.q, a: q.a, wrong: q.wrong.slice() })) };
+    d.sets.push(copy);
+    writeSets(d);
+    editSetId = copy.id;
+    loadQuestions();
+    editingId = null;
+    renderTeacher();
+    toast('Copied. Edit the copy to make a different version.');
+  }
+
+  function deleteSet() {
+    const d = readSets();
+    if (d.sets.length < 2) { toast('You need at least one set.'); return; }
+    const es = d.sets.find(x => x.id === editSetId);
+    if (!es) return;
+    if (!window.confirm('Delete the set "' + es.name + '" and its ' + es.questions.length + ' questions? This cannot be undone.')) return;
+    d.sets = d.sets.filter(x => x.id !== es.id);
+    if (d.gameId === es.id) d.gameId = d.sets[0].id;
+    d.editId = d.sets[0].id;
+    writeSets(d);
+    editSetId = d.sets[0].id;
+    loadQuestions();
+    editingId = null;
+    renderTeacher();
   }
 
   function renderTeacher() {
+    renderSetPicker();
     const ready = playable().length;
     const skipped = questions.length - ready;
     const cnt = $('#tCount');
-    cnt.textContent = questions.length + ' question' + (questions.length === 1 ? '' : 's') + ' saved.' +
+    cnt.textContent = '"' + editSetName + '": ' + questions.length + ' question' + (questions.length === 1 ? '' : 's') + ' saved.' +
       (skipped ? ' ' + skipped + ' still need a wrong answer and will be skipped.' : '') +
-      (ready < 20 ? ' Tip: players need about 16 turns on average to fill the raft, so 20 to 30 questions makes a fair game.' : '');
-    cnt.classList.toggle('warn', ready < 20 || skipped > 0);
+      (ready < 22 ? ' Tip: a standard 10-supply raft works best with about 22 or more questions. Smaller rafts need fewer (6 supplies: about 14), and a 12-supply raft needs about 26.' : '');
+    cnt.classList.toggle('warn', ready < 22 || skipped > 0);
 
     const list = $('#tList');
     list.replaceChildren();
@@ -1627,17 +1825,74 @@
   function exportQuestions() {
     const data = JSON.stringify(questions.map(({ q, a, wrong }) => ({ q, a, wrong })), null, 2);
     const url = URL.createObjectURL(new Blob([data], { type: 'application/json' }));
-    const a = el('a'); a.href = url; a.download = 'escape-the-island-questions.json';
+    const a = el('a'); a.href = url; a.download = 'escape-the-island-' + (editSetName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'questions') + '.json';
     document.body.append(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
+  // Small CSV reader: quoted fields, commas or semicolons, line breaks inside quotes, and a leading BOM.
+  function parseCsv(text) {
+    text = text.replace(/^\ufeff/, '');
+    const firstLine = text.split(/\r?\n/, 1)[0];
+    const delim = firstLine.split(';').length > firstLine.split(',').length ? ';' : ',';
+    const rows = [];
+    let row = [], field = '', inQ = false;
+    for (let i = 0; i < text.length; i++) {
+      const ch = text[i];
+      if (inQ) {
+        if (ch === '"') { if (text[i + 1] === '"') { field += '"'; i++; } else inQ = false; }
+        else field += ch;
+      } else if (ch === '"' && field === '') inQ = true;
+      else if (ch === delim) { row.push(field); field = ''; }
+      else if (ch === '\n' || ch === '\r') {
+        if (ch === '\r' && text[i + 1] === '\n') i++;
+        row.push(field); rows.push(row); row = []; field = '';
+      } else field += ch;
+    }
+    if (field !== '' || row.length) { row.push(field); rows.push(row); }
+    return rows;
+  }
+
+  // Columns: question, correct answer, wrong 1, wrong 2, wrong 3 (a "Check" column from the template is honored).
+  function importCsvText(text) {
+    const rows = parseCsv(text);
+    const head = (rows[0] || []).map(c => String(c).trim().toLowerCase());
+    const start = head[0] && head[0].indexOf('question') === 0 ? 1 : 0;
+    const hasCheck = head[5] === 'check';
+    let added = 0, skipped = 0;
+    rows.slice(start).forEach(r => {
+      if (r.every(c => !String(c).trim())) return;                       // blank row
+      const check = hasCheck ? String(r[5] || '').trim() : '';
+      if (check && check !== 'OK') { skipped++; return; }                // the template already flagged this row
+      const res = buildQuestion(r[0], r[1], [r[2], r[3], r[4]]);
+      if (res.q) { questions.push(res.q); added++; } else skipped++;
+    });
+    saveQuestions();
+    renderTeacher();
+    toast(added + ' question' + (added === 1 ? '' : 's') + ' imported' +
+      (skipped ? ', ' + skipped + ' row' + (skipped === 1 ? '' : 's') + ' skipped (each needs a question, a correct answer, and at least one wrong answer)' : '') + '.', 5000);
+  }
+
   function importQuestions(file) {
     if (!file) return;
+    const isCsv = /\.csv$/i.test(file.name) || file.type === 'text/csv';
     const reader = new FileReader();
     reader.onload = () => {
+      const text = String(reader.result);
+      if (isCsv) {
+        // Older Excel "CSV" files are not UTF-8. If accents look broken, read the file again as Windows-1252.
+        if (text.indexOf('\ufffd') >= 0 && !reader.retried) {
+          const again = new FileReader();
+          again.onload = () => importCsvText(String(again.result));
+          again.readAsText(file, 'windows-1252');
+          reader.retried = true;
+          return;
+        }
+        try { importCsvText(text); } catch (e) { toast('That CSV file could not be read.'); }
+        return;
+      }
       try {
-        const arr = JSON.parse(String(reader.result));
+        const arr = JSON.parse(text);
         if (!Array.isArray(arr)) throw new Error('not an array');
         let added = 0;
         arr.forEach(item => {
@@ -1651,7 +1906,7 @@
         saveQuestions();
         renderTeacher();
         toast(added + ' question' + (added === 1 ? '' : 's') + ' imported.');
-      } catch (e) { toast('That file could not be read. Use a file exported from this game.'); }
+      } catch (e) { toast('That file could not be read. Use a .json file exported from this game, or a .csv from the template.'); }
     };
     reader.readAsText(file);
   }
@@ -1779,11 +2034,11 @@
     return null;
   }
   function saveReport() { if (report) local.set(STORE_REPORT, JSON.stringify(report)); }
-  function startReport() { report = { id: uid(6), started: Date.now(), room: net.code, entries: [] }; saveReport(); }
+  function startReport(setName) { report = { id: uid(6), started: Date.now(), room: net.code, set: setName || '', entries: [] }; saveReport(); }
 
   function recordQuestion() {
     if (!H.current) return;
-    if (!report) startReport();
+    if (!report) startReport(chosenSet().name);
     const has = (p) => Object.prototype.hasOwnProperty.call(H.answers, p.pid);
     const rows = H.players.filter(p => p.connected || has(p)).map(p => ({
       name: p.name,
@@ -1839,7 +2094,7 @@
     $('#rEmpty').classList.toggle('hidden', has);
     ['#rDownload', '#rSummary', '#rDelete'].forEach(sel => { $(sel).disabled = !has; });
     $('#rMeta').textContent = has
-      ? new Date(report.started).toLocaleString() + ' · Room ' + report.room + ' · ' + report.entries.length + ' question' + (report.entries.length === 1 ? '' : 's') + ' asked'
+      ? new Date(report.started).toLocaleString() + ' · Room ' + report.room + (report.set ? ' · Set: ' + report.set : '') + ' · ' + report.entries.length + ' question' + (report.entries.length === 1 ? '' : 's') + ' asked'
       : '';
     if (!has) return;
     const { students, qs } = reportStats(report);
@@ -1885,7 +2140,7 @@
   function downloadSummary() {
     const { students, qs } = reportStats(report);
     const rows = [
-      ['Escape the Island class summary', new Date(report.started).toLocaleString(), 'Room ' + report.room],
+      ['Escape the Island class summary', new Date(report.started).toLocaleString(), 'Room ' + report.room].concat(report.set ? ['Set: ' + report.set] : []),
       [],
       ['Student totals'],
       ['Student', 'Questions answered', 'Correct', 'Percent correct']
@@ -1939,6 +2194,12 @@
     $('#startBtn').addEventListener('click', () => { if (net.role === 'host') hostStart(); });
     $('#optHostPlays').addEventListener('change', e => { if (net.role === 'host') hostSetHostPlays(e.target.checked); });
     $('#optAutoContinue').addEventListener('change', e => { if (net.role === 'host') { H.autoContinue = e.target.checked; broadcast(); } });
+    $('#optSet').addEventListener('change', e => { if (net.role === 'host') hostSetQuestionSet(e.target.value); });
+    $('#hcSet').addEventListener('change', e => { if (net.role === 'host') hostSetQuestionSet(e.target.value); });
+    $('#optTarget').addEventListener('change', e => { if (net.role === 'host') hostSetTarget(e.target.value); });
+    $('#hcTarget').addEventListener('change', e => { if (net.role === 'host') hostSetTarget(e.target.value); });
+    $('#endSet').addEventListener('change', e => { if (net.role === 'host') hostSetQuestionSet(e.target.value); });
+    $('#endTarget').addEventListener('change', e => { if (net.role === 'host') hostSetTarget(e.target.value); });
     $('#optEvents').addEventListener('change', e => { if (net.role === 'host') hostSetEvents(e.target.value); });
     $('#hcEvents').addEventListener('change', e => { if (net.role === 'host') hostSetEvents(e.target.value); });
     $('#lobbyLeaveBtn').addEventListener('click', leaveGame);
@@ -2011,6 +2272,11 @@
     $('#pinCancel').addEventListener('click', closePin);
     $('#pinInput').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); submitPin(); } });
     $('#tClose').addEventListener('click', closeTeacher);
+    $('#tSet').addEventListener('change', e => { editSetId = e.target.value; loadQuestions(); editingId = null; renderTeacher(); });
+    $('#tSetNew').addEventListener('click', newSet);
+    $('#tSetRename').addEventListener('click', renameSet);
+    $('#tSetDup').addEventListener('click', duplicateSet);
+    $('#tSetDelete').addEventListener('click', deleteSet);
     $('#tAddForm').addEventListener('submit', e => {
       e.preventDefault();
       const err = addQuestion($('#tNewQ').value, $('#tNewA').value, [$('#tNewW1').value, $('#tNewW2').value, $('#tNewW3').value]);

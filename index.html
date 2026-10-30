@@ -54,7 +54,7 @@
           <li>Take turns rolling the die and moving around the island.</li>
           <li>Every space you land on asks a question, and <strong>everyone</strong> picks an answer.</li>
           <li>Item spaces add supplies to the shared life raft.</li>
-          <li>Fill all 10 raft slots before the questions run out to escape!</li>
+          <li>Fill every slot on the raft before the questions run out to escape!</li>
         </ol>
       </div>
     </section>
@@ -77,6 +77,8 @@
         <div id="lobbyHostControls" class="hidden">
           <label class="check"><input type="checkbox" id="optHostPlays" checked> <span>I'm playing too (uncheck if you're only running the game)</span></label>
           <label class="check"><input type="checkbox" id="optAutoContinue" checked> <span>Move on automatically a few seconds after each question</span></label>
+          <label id="optSetRow" class="select-row hidden"><span>Question set:</span> <select id="optSet"></select></label>
+          <label class="select-row"><span>Supplies needed:</span> <select id="optTarget"><option value="6">6 (short game)</option><option value="8">8</option><option value="10" selected>10 (standard)</option><option value="12">12 (long game)</option></select></label>
           <label class="select-row"><span>Random events:</span> <select id="optEvents"><option value="off">Off</option><option value="sometimes" selected>Sometimes</option><option value="often">Often</option></select></label>
           <p id="lobbyQCount" class="lobby-qcount"></p>
           <button id="startBtn" class="btn big palm" type="button">Start the adventure</button>
@@ -111,7 +113,7 @@
                 <div class="deck" id="raftSlots"></div>
                 <div class="logs"></div>
               </div>
-              <div class="raft-count"><span id="raftCount">0</span>/10 supplies</div>
+              <div class="raft-count"><span id="raftCount">0</span>/<span id="raftTotal">10</span> supplies</div>
             </div>
 
             <div id="tokens"></div>
@@ -147,6 +149,8 @@
           <div class="card hidden" id="hostControls">
             <h3 class="card-h">Host controls</h3>
             <label class="check"><input type="checkbox" id="hcAutoContinue"> <span>Move on automatically after each question</span></label>
+            <label id="hcSetRow" class="select-row hidden"><span>Question set for the next game:</span> <select id="hcSet"></select></label>
+            <label class="select-row"><span>Supplies needed for the next game:</span> <select id="hcTarget"><option value="6">6 (short game)</option><option value="8">8</option><option value="10">10 (standard)</option><option value="12">12 (long game)</option></select></label>
             <label class="select-row"><span>Random events:</span> <select id="hcEvents"><option value="off">Off</option><option value="sometimes">Sometimes</option><option value="often">Often</option></select></label>
             <button id="hcWhiteboard" class="btn small palm" type="button">✏️ Open whiteboard</button>
             <button id="hcReport" class="btn small ghost" type="button">📊 Class report</button>
@@ -202,6 +206,10 @@
       <p id="endMsg" class="end-msg"></p>
       <p id="endStats" class="end-stats"></p>
       <div class="end-actions">
+        <div id="endHostOpts" class="end-opts hidden">
+          <label id="endSetRow" class="select-row hidden"><span>Question set:</span> <select id="endSet"></select></label>
+          <label class="select-row"><span>Supplies needed:</span> <select id="endTarget"><option value="6">6 (short game)</option><option value="8">8</option><option value="10">10 (standard)</option><option value="12">12 (long game)</option></select></label>
+        </div>
         <button id="playAgainBtn" class="btn palm hidden" type="button">Play again</button>
         <button id="endReportBtn" class="btn ghost hidden" type="button">📊 View class report</button>
         <p id="endWaiting" class="q-wait hidden">Waiting for the host to start another round…</p>
@@ -244,6 +252,14 @@
         <button id="tClose" class="btn small ghost" type="button">Close</button>
       </div>
       <p class="teacher-note">Questions are saved on this device and used when this device hosts a game. Changes apply the next time a game starts.</p>
+      <div class="t-sets">
+        <label class="select-row"><span>Question set:</span> <select id="tSet"></select></label>
+        <button id="tSetNew" class="btn small ghost" type="button">New set</button>
+        <button id="tSetRename" class="btn small ghost" type="button">Rename</button>
+        <button id="tSetDup" class="btn small ghost" type="button">Duplicate</button>
+        <button id="tSetDelete" class="btn small ghost danger" type="button">Delete set</button>
+      </div>
+      <p class="teacher-note">Make a separate set for each group, for example an easier and a harder version. When you host a game, pick the set in the lobby.</p>
       <p id="tCount" class="teacher-count"></p>
       <p class="teacher-note">Students see the correct answer mixed in with your wrong answers, in a random order. Use 1 to 3 wrong answers (so 2 to 4 choices). A true/false question needs just one wrong answer.</p>
 
@@ -267,11 +283,12 @@
 
       <div class="t-tools">
         <button id="tExport" class="btn small ghost" type="button">Export file</button>
-        <label class="btn small ghost t-import">Import file<input id="tImport" type="file" accept="application/json,.json" hidden></label>
+        <label class="btn small ghost t-import">Import file<input id="tImport" type="file" accept="application/json,.json,text/csv,.csv" hidden></label>
         <button id="tSamples" class="btn small ghost" type="button">Load sample questions</button>
         <button id="tReport" class="btn small ghost" type="button">📊 Last game report</button>
         <button id="tClear" class="btn small ghost danger" type="button">Delete all</button>
       </div>
+      <p class="teacher-note">Import accepts a .json file exported from this game, or a .csv file saved from the question set template. Imported questions are added to the set that is open.</p>
     </div>
   </div>
 
